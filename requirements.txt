@@ -1,0 +1,8 @@
+numpy
+pandas
+duckdb
+streamlit
+rerun-sdk
+huggingface_hub
+# 仅当你要加载真实 LeRobot 数据集做可视化时才需要（较大）：
+# lerobot

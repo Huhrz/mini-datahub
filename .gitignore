@@ -1,0 +1,28 @@
+# 数据库（运行时自动生成，不该进版本库）
+*.duckdb
+*.duckdb.wal
+
+# Rerun 录制文件
+*.rrd
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 下载的数据集缓存
+data/
+datasets/
+*.parquet
+*.mp4
+
+# 系统/编辑器
+.DS_Store
+.idea/
+.vscode/
