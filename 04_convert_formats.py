@@ -132,6 +132,13 @@ def main():
     print(" ", m_a.to_row())
     print(" ", m_b.to_row())
 
+    # 归一后立刻自动质检（同一套引擎，不分源格式）—— 把"粘合层"和"质检"串起来
+    from quality import compute_quality
+    print("\n归一后自动质检（B4，格式无关）：")
+    for name, canon in [("源A (lerobot式)", canon_a), ("源B (rlds式)", canon_b)]:
+        r = compute_quality(canon)
+        print(f"  {name}: 质量分={r['quality_score']} 可学性={r['learnability_score']}")
+
 
 if __name__ == "__main__":
     main()

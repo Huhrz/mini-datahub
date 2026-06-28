@@ -7,12 +7,16 @@
 
 | 文件 | 作用 |
 |---|---|
-| `schema.py` | **元数据 Schema（项目核心资产）**。定义每个数据集 / 每条轨迹要记哪些字段，含"许可证→是否可商用"推断。检索、合规过滤、配比全靠它。 |
+| `schema.py` | **联邦目录项 Schema（项目核心资产）**。已对齐系统设计文档 v0.1 第 4.1 节的 Catalog Entry：含 `action_convention`（动作约定，只描述不强转，见文档 4.3）、`provenance_type`（采集方式）、taxonomy 标签（tasks/scenes/modalities）、细化的 license（spdx/可商用/可再分发）、quality_score、lineage 等。建表/插入语句从字段定义**自动生成**，加字段不会出错。 |
 | `demo.py` | 合成示例数据生成器，让你不联网也能跑通整条线。 |
 | `01_explore_and_visualize.py` | 步骤 1：加载一条轨迹，用 **Rerun** 可视化（摄像头画面 + 关节曲线）。 |
 | `02_build_catalog.py` | 步骤 2：把元数据写进 **DuckDB**，跑示例检索（按本体 / 许可 / 失败标注筛选）。 |
 | `03_ingest_real_lerobot.py` | 步骤 2.5：接入**真实** LeRobot 数据集——只拉几 KB 的 `meta/info.json` 就登记进目录（演示"元数据先行、原始数据按需取"）。需联网。 |
-| `04_convert_formats.py` | 步骤 3：**粘合层**——用适配器把 LeRobot 式 / RLDS 式两种异构格式归一成同一种规范表示。DataHub 的核心价值，不联网即可跑。 |
+| `04_convert_formats.py` | 步骤 3：**粘合层**——用适配器把 LeRobot 式 / RLDS 式两种异构格式归一成同一种规范表示，并对归一结果**自动质检**。不联网即可跑。 |
+| `quality.py` | **质检引擎（B4）**：在统一表示上算质量分 / 可学性分，分数可解释。格式无关，入库时复用同一套。 |
+| `05_profile_quality.py` | 步骤 4：**入库自动质检 demo**——造 good/lazy/dirty 三种轨迹证明引擎能区分好坏，并把分数写回目录。不联网即可跑。 |
+| `06_profile_real.py` | 步骤 4.5：对**真实**数据集采样质检并写回（落地扩展第 1、2 条）。需联网 + `pip install lerobot`。 |
+| `07_check_links.py` | 步骤 5：**联邦指针健康检查**——扫描所有数据集主页链接，标出失效(404)的（对应文档第 8 章"联邦指针失效"风险）。需联网，只用标准库。 |
 | `hub_data.py` | **数据层**：网页和命令行共用的目录读写逻辑（连接 DuckDB、查询、筛选、统计）。不依赖界面，可单测。 |
 | `app.py` | **网页界面（Streamlit）**：搜索、筛选、统计图、数据集详情、一键在线可视化。让 hub 真正"好用起来"。 |
 | `requirements.txt` | 依赖。 |
@@ -47,6 +51,9 @@ python 02_build_catalog.py
 
 # 4. 演示"粘合层"：把两种异构格式归一（不联网）
 python 04_convert_formats.py
+
+# 5. 演示"入库自动质检"：给好/坏数据打分并写回目录（不联网）
+python 05_profile_quality.py
 ```
 
 ## 跑真实数据（需联网）

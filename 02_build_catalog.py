@@ -15,8 +15,8 @@ build_sample_metadata() 换成"从 LeRobotDataset 读取并填 schema"即可。
 
 import duckdb
 from schema import CREATE_DATASETS_TABLE, CREATE_EPISODES_TABLE
-# 样例数据的定义集中放在 hub_data 里，命令行和网页共用同一份，避免不一致
-from hub_data import build_sample_metadata
+# 样例数据与插入逻辑集中放在 hub_data 里，命令行和网页共用同一份，避免不一致
+from hub_data import build_sample_metadata, insert_datasets, insert_episodes
 
 DB_PATH = "catalog.duckdb"
 
@@ -28,14 +28,8 @@ def main():
     con.execute(CREATE_EPISODES_TABLE)
 
     datasets, episodes = build_sample_metadata()
-    con.executemany(
-        "INSERT INTO datasets VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [tuple(d.to_row().values()) for d in datasets],
-    )
-    con.executemany(
-        "INSERT INTO episodes VALUES (?,?,?,?,?,?,?,?,?,?)",
-        [tuple(e.to_row().values()) for e in episodes],
-    )
+    insert_datasets(con, datasets)
+    insert_episodes(con, episodes)
     print(f"[ok] 已写入 {len(datasets)} 个数据集、{len(episodes)} 条轨迹到 {DB_PATH}\n")
 
     # ---------- 示例检索 ----------
@@ -45,21 +39,25 @@ def main():
         print()
 
     show("① 全部数据集概览",
-         "SELECT name, embodiment, license, commercial_use, n_episodes FROM datasets ORDER BY n_episodes DESC")
+         "SELECT name, embodiment, license_spdx, commercial_ok, provenance_type, n_episodes "
+         "FROM datasets ORDER BY n_episodes DESC")
 
     show("② 只要【可商用】的数据集（合规过滤，DataHub 的差异化能力）",
-         "SELECT name, license FROM datasets WHERE commercial_use = TRUE")
+         "SELECT name, license_spdx FROM datasets WHERE commercial_ok = TRUE")
 
     show("③ 找【双臂或人形】本体的数据集",
-         "SELECT name, embodiment, robot_model FROM datasets WHERE embodiment IN ('bimanual','humanoid')")
+         "SELECT name, embodiment, robot_model, dof FROM datasets WHERE embodiment IN ('bimanual','humanoid')")
 
     show("④ 找【带失败标注】的数据集（高价值数据）",
          "SELECT name FROM datasets WHERE has_failure_labels = TRUE")
 
-    show("⑤ 跨数据集：列出所有【失败】的轨迹",
+    show("⑤ 各数据集的动作约定（文档 4.3：只描述不强转）",
+         "SELECT name, action_convention FROM datasets")
+
+    show("⑥ 跨数据集：列出所有【失败】的轨迹",
          "SELECT episode_uid, task_text FROM episodes WHERE success = FALSE")
 
-    show("⑥ 统计：按本体汇总可用轨迹数（为'多样性配比'打基础）",
+    show("⑦ 统计：按本体汇总可用轨迹数（为'多样性配比'打基础）",
          "SELECT embodiment, COUNT(*) AS n_datasets, SUM(n_episodes) AS total_episodes "
          "FROM datasets GROUP BY embodiment ORDER BY total_episodes DESC")
 

@@ -4,5 +4,6 @@ duckdb
 streamlit
 rerun-sdk
 huggingface_hub
+requests
 # 仅当你要加载真实 LeRobot 数据集做可视化时才需要（较大）：
 # lerobot

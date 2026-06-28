@@ -15,11 +15,13 @@ import sys
 import json
 import duckdb
 from schema import (
-    DatasetMeta, infer_commercial_use,
+    DatasetMeta, license_fields,
     CREATE_DATASETS_TABLE, CREATE_EPISODES_TABLE,
+    insert_sql, to_db_values,
 )
 
 DB_PATH = "catalog.duckdb"
+INSERT_DATASET = insert_sql("datasets", DatasetMeta)
 DEFAULT_REPOS = ["lerobot/pusht", "lerobot/aloha_sim_insertion_human"]
 
 
@@ -53,22 +55,39 @@ def fetch_dataset_meta(repo_id: str) -> DatasetMeta:
     features = info.get("features", {})
     cam_keys = [k for k, v in features.items() if v.get("dtype") in ("video", "image")]
     robot_type = info.get("robot_type", "")
+    spdx, com_ok, redist_ok = license_fields(license_str)
+
+    # 从 features 推断动作约定与状态维度（能填多少填多少，缺的留空）
+    act = features.get("action", {})
+    act_dim = (act.get("shape") or [0])[0]
+    action_convention = {"space": "unknown", "frame": "base",
+                         "abs_or_delta": "unknown", "units": "unknown"}
+    # 推断模态
+    modalities = []
+    if cam_keys:
+        modalities.append("rgb")
+    if "observation.state" in features:
+        modalities.append("state")
+    if any("language" in k or "task" in k for k in features):
+        modalities.append("language")
 
     return DatasetMeta(
         dataset_id=repo_id,
         name=repo_id.split("/")[-1],
         source="huggingface",
+        source_uri=f"https://huggingface.co/datasets/{repo_id}",
         source_format=f"lerobot_{info.get('codebase_version', 'v?')}",
-        license=license_str,
-        commercial_use=infer_commercial_use(license_str),
+        license_spdx=spdx, commercial_ok=com_ok, redistribute_ok=redist_ok,
+        provenance_type="teleop",
         n_episodes=int(info.get("total_episodes", 0)),
         total_frames=int(info.get("total_frames", 0)),
         fps=float(info.get("fps", 0) or 0),
         embodiment=guess_embodiment(robot_type),
         robot_model=robot_type,
+        dof=int(act_dim), arms=2 if guess_embodiment(robot_type) == "bimanual" else 1,
+        action_convention=action_convention, modalities=modalities,
         n_cameras=len(cam_keys),
         has_failure_labels="next.reward" in features or "success" in features,
-        collection="",
         homepage=f"https://huggingface.co/datasets/{repo_id}",
     )
 
@@ -83,18 +102,15 @@ def main():
         try:
             meta = fetch_dataset_meta(repo)
             con.execute("DELETE FROM datasets WHERE dataset_id = ?", [repo])
-            con.execute(
-                "INSERT INTO datasets VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                tuple(meta.to_row().values()),
-            )
+            con.execute(INSERT_DATASET, to_db_values(meta))
             print(f"[ok] {repo}: {meta.n_episodes} eps, {meta.embodiment}, "
-                  f"fps={meta.fps}, license={meta.license}, cams={meta.n_cameras}")
+                  f"fps={meta.fps}, license={meta.license_spdx}, cams={meta.n_cameras}")
         except Exception as e:
             print(f"[skip] {repo}: {repr(e)[:140]}")
 
     print("\n当前目录里的数据集：")
     print(con.execute(
-        "SELECT name, source_format, embodiment, license, commercial_use, n_episodes "
+        "SELECT name, source_format, embodiment, license_spdx, commercial_ok, n_episodes "
         "FROM datasets ORDER BY n_episodes DESC"
     ).df().to_string(index=False))
     con.close()
