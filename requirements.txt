@@ -5,5 +5,7 @@ streamlit
 rerun-sdk
 huggingface_hub
 requests
-# 仅当你要加载真实 LeRobot 数据集做可视化时才需要（较大）：
-# lerobot
+# 按需安装（只有用到对应格式才需要）：
+# lerobot        # 加载真实 LeRobot 数据集做可视化/质检（较大）
+# h5py           # 接入 HDF5 格式数据集（09_ingest.py hdf5）
+# mcap           # 接入 rosbag/MCAP 格式数据集（09_ingest.py mcap）

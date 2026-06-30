@@ -17,15 +17,75 @@ import hub_data as hd
 
 st.set_page_config(page_title="机器人 DataHub", page_icon="🤖", layout="wide")
 
+# ---------------- 全站样式美化 ----------------
+st.markdown("""
+<style>
+/* 收紧顶部留白 */
+.block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1300px; }
+
+/* 渐变标题横幅 */
+.hero {
+    background: linear-gradient(110deg, #4F46E5 0%, #7C3AED 55%, #2563EB 100%);
+    border-radius: 16px; padding: 26px 32px; margin-bottom: 22px;
+    color: #fff; box-shadow: 0 8px 24px rgba(79,70,229,.22);
+}
+.hero h1 { color:#fff; font-size: 1.9rem; margin:0 0 6px 0; font-weight:700; }
+.hero p  { color: #E0E7FF; margin:0; font-size: 1.02rem; }
+
+/* 指标做成卡片 */
+[data-testid="stMetric"] {
+    background: #FFFFFF; border: 1px solid #EAECF3; border-radius: 12px;
+    padding: 14px 18px; box-shadow: 0 1px 3px rgba(16,24,40,.05);
+}
+[data-testid="stMetricLabel"] { color:#667085; font-weight:600; }
+/* 数值字号自适应缩小 + 允许换行，避免长名字（如 single_arm）被截断 */
+[data-testid="stMetricValue"] {
+    color:#1F2937; font-weight:700;
+    font-size: clamp(1.05rem, 1.6vw, 1.5rem);
+    white-space: normal; overflow-wrap: anywhere; line-height: 1.25;
+}
+[data-testid="stMetricValue"] > div { white-space: normal; overflow: visible; }
+
+/* 章节小标题 */
+h2, h3 { color:#1F2937; font-weight:700; }
+
+/* 按钮圆角 + 悬停 */
+.stButton > button, .stLinkButton > a {
+    border-radius: 10px; font-weight:600; border:1px solid #E5E7EB;
+}
+.stButton > button:hover { border-color:#4F46E5; color:#4F46E5; }
+
+/* 侧栏标题 */
+[data-testid="stSidebar"] h2 { font-size:1.1rem; }
+[data-testid="stSidebar"] { border-right:1px solid #EEF0F5; }
+
+/* 数据表圆角 */
+[data-testid="stDataFrame"] { border-radius: 10px; overflow:hidden; }
+</style>
+""", unsafe_allow_html=True)
+
 # 连接数据库（缓存，避免每次刷新都重连）
 @st.cache_resource
 def get_con():
     return hd.ensure_catalog()
 
-con = get_con()
+try:
+    con = get_con()
+except Exception as e:
+    if "lock" in str(e).lower():
+        st.error(
+            "⚠️ 数据库被另一个程序占用——通常是有旧的网页或脚本还在后台运行。\n\n"
+            "请在终端运行 `pkill -f streamlit` 关闭所有旧实例，再重新启动本网页。"
+        )
+        st.stop()
+    raise
 
-st.title("🤖 机器人 DataHub")
-st.caption("一个聚合、检索、预览机器人学习数据集的迷你枢纽")
+st.markdown("""
+<div class="hero">
+  <h1>🤖 机器人 DataHub</h1>
+  <p>跨源聚合 · 统一检索 · 自动质检 · 一键回放 —— 具身智能数据的联邦门户</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ---------------- 顶部指标卡 ----------------
 stats = hd.summary_stats(con)
@@ -61,8 +121,14 @@ with left:
     show_cols = ["name", "embodiment", "robot_model", "provenance_type", "source_format",
                  "license_spdx", "commercial_ok", "quality_score", "learnability_score",
                  "n_episodes", "fps", "n_cameras", "has_failure_labels"]
+    df_show = df[show_cols].copy()
+    # 未评分(-1)/未知(0) 的数值留空显示，避免刺眼的 -1 / 0
+    df_show.loc[df_show["quality_score"] < 0, "quality_score"] = None
+    df_show.loc[df_show["learnability_score"] < 0, "learnability_score"] = None
+    df_show.loc[df_show["fps"] <= 0, "fps"] = None
+    df_show.loc[df_show["n_cameras"] <= 0, "n_cameras"] = None
     st.dataframe(
-        df[show_cols],
+        df_show,
         use_container_width=True, hide_index=True,
         column_config={
             "name": "名称", "embodiment": "本体", "robot_model": "机器人",
@@ -126,12 +192,26 @@ else:
         if vals:
             st.write(f"**{label}：** " + "　".join(f"`{v}`" for v in vals))
 
-    # 在线可视化 + 主页链接
-    b1, b2 = st.columns(2)
+    # 回放（本地弹出 Rerun）+ 在线可视化 + 主页链接
+    b1, b2, b3 = st.columns(3)
+    if b1.button("▶ 在 Rerun 中回放", help="点一下，从门户直接打开这个数据集的回放窗口"):
+        try:
+            import viz
+            from demo import make_demo_episode
+            ep = make_demo_episode(dof=int(row["dof"]) or 7, fps=float(row["fps"]) or 30.0,
+                                   task_text=f"{row['name']} ({row['source_format']})")
+            viz.log_unified([{
+                "name": str(row["name"]).replace(" ", "_"),
+                "source_format": row["source_format"],
+                "canon": ep,
+            }], title=f"replay_{picked}")
+            st.success("已弹出 Rerun 回放窗口（合成示例数据；真实数据接入后回放真实轨迹）。")
+        except Exception as e:
+            st.error(f"回放启动失败：{e}（确认已 pip install rerun-sdk）")
     if row["source"] == "huggingface" or "lerobot" in str(row["source_format"]):
-        b1.link_button("🎬 在线可视化这个数据集", hd.hf_visualizer_url(picked))
+        b2.link_button("🎬 在线可视化", hd.hf_visualizer_url(picked))
     if row["homepage"]:
-        b2.link_button("🔗 数据集主页", row["homepage"])
+        b3.link_button("🔗 数据集主页", row["homepage"])
 
     # 轨迹列表
     st.markdown("**轨迹样例：**")

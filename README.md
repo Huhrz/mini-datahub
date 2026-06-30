@@ -11,7 +11,9 @@
 | `demo.py` | 合成示例数据生成器，让你不联网也能跑通整条线。 |
 | `01_explore_and_visualize.py` | 步骤 1：加载一条轨迹，用 **Rerun** 可视化（摄像头画面 + 关节曲线）。 |
 | `02_build_catalog.py` | 步骤 2：把元数据写进 **DuckDB**，跑示例检索（按本体 / 许可 / 失败标注筛选）。 |
-| `03_ingest_real_lerobot.py` | 步骤 2.5：接入**真实** LeRobot 数据集——只拉几 KB 的 `meta/info.json` 就登记进目录（演示"元数据先行、原始数据按需取"）。需联网。 |
+| `03_ingest_real_lerobot.py` | 步骤 2.5：接入**真实** LeRobot 数据集——只拉几 KB 的 `meta/info.json` 就登记进目录（演示"元数据先行、原始数据按需取"）。需联网。（已被 `sources.py`+`09` 的统一框架取代，保留作单格式示例） |
+| `sources.py` | **源适配器框架（G1）**：注册表 + 4 个真实适配器（lerobot_hf / openx_rlds / hdf5 / mcap）。加新格式只需丢一个 `@register` 函数。 |
+| `09_ingest.py` | **统一接入入口**：一个命令接入任意格式 `python 09_ingest.py <格式> <标识/路径>`。 |
 | `04_convert_formats.py` | 步骤 3：**粘合层**——用适配器把 LeRobot 式 / RLDS 式两种异构格式归一成同一种规范表示，并对归一结果**自动质检**。不联网即可跑。 |
 | `quality.py` | **质检引擎（B4）**：在统一表示上算质量分 / 可学性分，分数可解释。格式无关，入库时复用同一套。 |
 | `05_profile_quality.py` | 步骤 4：**入库自动质检 demo**——造 good/lazy/dirty 三种轨迹证明引擎能区分好坏，并把分数写回目录。不联网即可跑。 |
@@ -20,7 +22,7 @@
 | `viz.py` | 共享可视化模块：把多个不同源的数据集放进**同一个 Rerun 回放器**（版本兼容）。 |
 | `08_unified_replay.py` | 步骤 6：**跨源统一回放 demo**——两个不同源格式的数据集归一后在同一回放器里展示。这是 Festivus(只索引)/Humaid(只自家数据)都没占的生态位核心证明。会弹 Rerun 窗口。 |
 | `hub_data.py` | **数据层**：网页和命令行共用的目录读写逻辑（连接 DuckDB、查询、筛选、统计）。不依赖界面，可单测。 |
-| `app.py` | **网页界面（Streamlit）**：搜索、筛选、统计图、数据集详情、一键在线可视化。让 hub 真正"好用起来"。 |
+| `app.py` | **网页界面（Streamlit）**：搜索、筛选、统计图、数据集详情、质量分。详情页有 **"▶ 在 Rerun 中回放"** 按钮——点目录里任意数据集就从门户直接打开回放（跨源统一回放嵌入门户）。 |
 | `requirements.txt` | 依赖。 |
 
 ## 🌐 启动网页（最推荐的演示方式）
@@ -71,6 +73,24 @@ python 01_explore_and_visualize.py --repo-id lerobot/aloha_sim_insertion_human -
 
 > 提示：`02_build_catalog.py` 每次会 DROP 重建表（仅为演示）。若想保留 `03` 接入的真实数据，
 > 把 `02` 开头的 `DROP TABLE` 那行去掉即可。
+
+## 🔌 接入不同格式的数据（统一入口）
+
+```bash
+# HuggingFace / LeRobot
+python 09_ingest.py lerobot_hf lerobot/pusht lerobot/aloha_sim_insertion_human
+
+# Open X-Embodiment / RLDS（HF 索引不了的源，这是相对 HF 的核心差异）
+python 09_ingest.py openx_rlds fractal20220817_data
+
+# 本地 HDF5（需 pip install h5py）
+python 09_ingest.py hdf5 ./my_data.hdf5
+
+# 本地 rosbag/MCAP（需 pip install mcap）
+python 09_ingest.py mcap ./recording.mcap
+```
+
+每种格式对应 `sources.py` 里一个适配器。**要加新格式，只需在 `sources.py` 里再写一个 `@register("xxx")` 的函数**，其它代码都不用动。接入后刷新网页即可在目录里看到、按 `源格式` 筛选。
 
 ## 这份脚手架演示了什么（给导师看的话术）
 

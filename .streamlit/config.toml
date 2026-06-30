@@ -1,0 +1,10 @@
+# Streamlit 主题配置 —— 统一全站配色与字体
+[theme]
+primaryColor = "#4F46E5"            # 主色：靛蓝（按钮、选中态、滑块）
+backgroundColor = "#FFFFFF"         # 页面背景
+secondaryBackgroundColor = "#F4F6FB" # 侧栏 / 卡片背景
+textColor = "#1F2937"               # 正文文字
+font = "sans serif"
+
+[server]
+runOnSave = true                    # 改完代码自动刷新
