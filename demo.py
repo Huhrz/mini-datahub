@@ -10,6 +10,38 @@
 import numpy as np
 
 
+def make_demo_episode(dof: int = 7, length: int = 120, fps: float = 30.0,
+                      seed: int = 0, task_text: str = "demo replay"):
+    """
+    按指定自由度生成一条合成轨迹（给网页"点数据集→回放"用）。
+    每个关节一条不同相位的正弦曲线 + 一张方块跟随移动的摄像头画面。
+    真实接入时，把这里换成对应数据集的真实 episode 即可，下游 viz 不变。
+    """
+    dof = max(1, int(dof))
+    t = np.linspace(0, 2 * np.pi, length)
+    state = np.stack(
+        [0.7 * np.sin(t + j * 0.6) for j in range(dof)], axis=1
+    ).astype(np.float32)
+    action = np.diff(state, axis=0, prepend=state[:1]).astype(np.float32)
+
+    cx = (0.5 + 0.35 * np.cos(state[:, 0])) * 256
+    cy = (0.5 + 0.35 * np.sin(state[:, min(1, dof - 1)])) * 256
+    frames = []
+    for i in range(length):
+        img = np.full((256, 256, 3), 30, dtype=np.uint8)
+        x, y = int(cx[i]), int(cy[i])
+        img[max(0, y - 10):y + 10, max(0, x - 10):x + 10] = (230, 80, 80)
+        frames.append(img)
+
+    return {
+        "images": np.stack(frames),
+        "state": state,
+        "action": action,
+        "fps": float(fps),
+        "task_text": task_text,
+    }
+
+
 def make_synthetic_episode(length: int = 120, seed: int = 0):
     """返回一条合成轨迹的逐帧数据。"""
     rng = np.random.default_rng(seed)
