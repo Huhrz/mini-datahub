@@ -12,8 +12,10 @@
 然后浏览器会自动打开 http://localhost:8501
 """
 
+import json
 import streamlit as st
 import hub_data as hd
+import taxonomy as tx
 
 st.set_page_config(page_title="机器人 DataHub", page_icon="🤖", layout="wide")
 
@@ -97,6 +99,16 @@ c3.metric("总帧数", f'{stats["n_frames"]:,}')
 # ---------------- 侧栏筛选 ----------------
 st.sidebar.header("🔎 筛选")
 search = st.sidebar.text_input("搜索名称 / ID", "")
+
+# 按任务概念检索（B1 taxonomy）—— 跨命名：搜"抓取"也能命中叫 grasp/pick-and-place 的
+_task_opts = tx.concept_options("tasks")
+_concept_labels = ["（不限）"] + [lbl for _, lbl in _task_opts]
+_picked_label = st.sidebar.selectbox(
+    "🧭 按任务概念检索", _concept_labels,
+    help="基于统一 taxonomy 对齐：选一个标准概念，叫法不同但本质相同的数据集都会被找出来",
+)
+_picked_cid = dict(zip(_concept_labels[1:], [cid for cid, _ in _task_opts])).get(_picked_label)
+
 embodiments = st.sidebar.multiselect("本体类型", hd.distinct_values(con, "embodiment"))
 formats = st.sidebar.multiselect("源格式", hd.distinct_values(con, "source_format"))
 provenances = st.sidebar.multiselect("采集方式", hd.distinct_values(con, "provenance_type"),
@@ -112,6 +124,31 @@ df = hd.query_datasets(
     commercial_only=commercial_only, failures_only=failures_only,
     min_episodes=min_episodes, min_quality=min_quality,
 )
+
+# 按任务概念过滤：优先读 concept_tags 表（12_tag_concepts.py 预先算好，含语义对齐）；
+# 没有该表时退回"用规则即时对齐"（只能覆盖字面能匹配的）
+if _picked_cid:
+    tagged_ids = None
+    try:
+        tagged_ids = {r[0] for r in con.execute(
+            "SELECT dataset_id FROM concept_tags WHERE category='tasks' AND concept_id=?",
+            [_picked_cid]).fetchall()}
+    except Exception:
+        tagged_ids = None
+
+    if tagged_ids is not None:
+        df = df[df["dataset_id"].isin(tagged_ids)]
+        st.caption("（按概念检索：读取 concept_tags 预对齐结果）")
+    else:
+        def _has_concept(tasks_json):
+            try:
+                raw = json.loads(tasks_json) if tasks_json else []
+            except Exception:
+                raw = []
+            aligned, _ = tx.align_many(raw, "tasks")
+            return _picked_cid in aligned
+        df = df[df["tasks"].apply(_has_concept)]
+        st.caption("（按概念检索：即时规则对齐；运行 `python 12_tag_concepts.py` 可启用语义对齐、提升召回）")
 
 # ---------------- 主区：两栏 ----------------
 left, right = st.columns([2, 1])
@@ -169,13 +206,24 @@ else:
     if not row["commercial_ok"]:
         st.warning("⚠️ 该数据集**不可商用**，请勿混入商业训练集。")
 
-    # 质检分（B4 自动质检）
+    # 质检分（两层：元数据初筛 / 深度质检）
     q, l = row["quality_score"], row["learnability_score"]
+    try:
+        qr = json.loads(row["quality_report"]) if row["quality_report"] else {}
+    except Exception:
+        qr = {}
+    tier = qr.get("tier")
     if q is not None and q >= 0:
-        st.write(f"**质量分：** {q:.2f}　|　**可学性：** {l:.2f}　"
-                 f"<span style='color:gray'>（入库自动质检 B4）</span>", unsafe_allow_html=True)
+        if tier == "metadata":
+            st.write(f"**质量分：** {q:.2f} "
+                     f"<span style='color:gray'>（元数据初筛分 · 零下载估算；"
+                     f"深度质检/可学性需运行 06_profile_real.py）</span>", unsafe_allow_html=True)
+        else:
+            ltxt = f"　|　**可学性：** {l:.2f}" if (l is not None and l >= 0) else ""
+            st.write(f"**质量分：** {q:.2f}{ltxt}　"
+                     f"<span style='color:gray'>（深度质检 B4）</span>", unsafe_allow_html=True)
     else:
-        st.caption("质量分：未评分（运行 `python 05_profile_quality.py` 生成）")
+        st.caption("质量分：未评分")
 
     # 动作约定（文档 4.3：只描述不强转）+ taxonomy 标签
     try:

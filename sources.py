@@ -30,7 +30,17 @@ def register(source_type):
 def fetch(source_type, identifier) -> DatasetMeta:
     if source_type not in REGISTRY:
         raise ValueError(f"未知格式 '{source_type}'；已注册: {list(REGISTRY)}")
-    return REGISTRY[source_type](identifier)
+    meta = REGISTRY[source_type](identifier)
+    # 接入即打"元数据初筛分"（零下载）；深度质检分(learnability)留给 06 按需补
+    try:
+        from quality import metadata_quality
+        if getattr(meta, "quality_score", -1) is None or meta.quality_score < 0:
+            s, rep = metadata_quality(meta)
+            meta.quality_score = s
+            meta.quality_report = rep
+    except Exception:
+        pass
+    return meta
 
 
 def available():
@@ -67,6 +77,33 @@ def from_lerobot_hf(repo_id: str) -> DatasetMeta:
     spdx, com, redist = license_fields(license_str)
     act_dim = (feats.get("action", {}).get("shape") or [0])[0]
     mods = (["rgb"] if cams else []) + (["state"] if "observation.state" in feats else [])
+    if any("language" in k or k == "task" for k in feats):
+        mods.append("language")
+
+    # 拉取任务的自然语言描述（给 taxonomy 对齐用）；兼容 v2.1(jsonl) 与 v3.0(parquet)
+    tasks = []
+    # v2.1: meta/tasks.jsonl
+    try:
+        tp = hf_hub_download(repo_id, "meta/tasks.jsonl", repo_type="dataset")
+        for line in open(tp):
+            line = line.strip()
+            if line:
+                t = json.loads(line).get("task")
+                if t:
+                    tasks.append(t)
+    except Exception:
+        pass
+    # v3.0: meta/tasks.parquet（用 duckdb 读，免额外依赖）
+    if not tasks:
+        try:
+            tp = hf_hub_download(repo_id, "meta/tasks.parquet", repo_type="dataset")
+            import duckdb
+            df = duckdb.sql(f"SELECT * FROM read_parquet('{tp}')").df()
+            col = "task" if "task" in df.columns else df.select_dtypes(include="object").columns[0]
+            tasks = [str(t) for t in df[col].tolist() if t]
+        except Exception:
+            pass
+    tasks = list(dict.fromkeys(tasks))[:50]   # 去重 + 限量
 
     return DatasetMeta(
         dataset_id=repo_id, name=repo_id.split("/")[-1], source="huggingface",
@@ -74,7 +111,7 @@ def from_lerobot_hf(repo_id: str) -> DatasetMeta:
         source_format=f"lerobot_{info.get('codebase_version', 'v?')}",
         license_spdx=spdx, commercial_ok=com, redistribute_ok=redist,
         provenance_type="teleop", embodiment=_guess_embodiment(robot), robot_model=robot,
-        dof=int(act_dim), modalities=mods, fps=float(info.get("fps", 0) or 0),
+        dof=int(act_dim), modalities=mods, tasks=tasks, fps=float(info.get("fps", 0) or 0),
         n_cameras=len(cams), n_episodes=int(info.get("total_episodes", 0)),
         total_frames=int(info.get("total_frames", 0)),
         has_failure_labels=("next.reward" in feats),

@@ -13,9 +13,14 @@
 | `02_build_catalog.py` | 步骤 2：把元数据写进 **DuckDB**，跑示例检索（按本体 / 许可 / 失败标注筛选）。 |
 | `03_ingest_real_lerobot.py` | 步骤 2.5：接入**真实** LeRobot 数据集——只拉几 KB 的 `meta/info.json` 就登记进目录（演示"元数据先行、原始数据按需取"）。需联网。（已被 `sources.py`+`09` 的统一框架取代，保留作单格式示例） |
 | `sources.py` | **源适配器框架（G1）**：注册表 + 4 个真实适配器（lerobot_hf / openx_rlds / hdf5 / mcap）。加新格式只需丢一个 `@register` 函数。 |
+| `taxonomy.py` | **统一 taxonomy + 对齐引擎（B1，最硬的护城河）**：带层级+中英别名的受控词表 + 把任意叫法对齐到统一概念（精确+模糊，匹配不上标记需人工复核）。 |
+| `10_align_taxonomy.py` | 步骤 7：**对齐 demo**——证明 grasp/pick-and-place/抓取 归到同一概念，并演示"按概念跨命名检索"。不联网即可跑。 |
+| `taxonomy_semantic.py` | **语义对齐（embedding）**：规则对不上时用文本向量按"意思"匹配，大幅提升召回。需 `sentence-transformers`，没装则安全退回规则版。 |
+| `12_tag_concepts.py` | 步骤 9：**批量给数据集打概念标签**（语义对齐），写进 `concept_tags` 表。接入新数据后跑一次，网页按概念检索即读这张表（快）。 |
 | `09_ingest.py` | **统一接入入口**：一个命令接入任意格式 `python 09_ingest.py <格式> <标识/路径>`。 |
+| `11_batch_ingest.py` | **批量自动接入**：用 HF API 一次枚举几十个真实 LeRobot 数据集入库（含任务描述），让目录上规模、检验 taxonomy 检索。需联网。 |
 | `04_convert_formats.py` | 步骤 3：**粘合层**——用适配器把 LeRobot 式 / RLDS 式两种异构格式归一成同一种规范表示，并对归一结果**自动质检**。不联网即可跑。 |
-| `quality.py` | **质检引擎（B4）**：在统一表示上算质量分 / 可学性分，分数可解释。格式无关，入库时复用同一套。 |
+| `quality.py` | **质检引擎（B4，两层）**：① `metadata_quality` 元数据初筛分——零下载、接入时（`sources.fetch`）人人瞬间有分；② `compute_quality` 深度质检——读真实轨迹算干净度/可学性（`05`/`06`，按需）。 |
 | `05_profile_quality.py` | 步骤 4：**入库自动质检 demo**——造 good/lazy/dirty 三种轨迹证明引擎能区分好坏，并把分数写回目录。不联网即可跑。 |
 | `06_profile_real.py` | 步骤 4.5：对**真实**数据集采样质检并写回（落地扩展第 1、2 条）。需联网 + `pip install lerobot`。 |
 | `07_check_links.py` | 步骤 5：**联邦指针健康检查**——扫描所有数据集主页链接，标出失效(404)的（对应文档第 8 章"联邦指针失效"风险）。需联网。 |

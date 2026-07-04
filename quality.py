@@ -24,6 +24,45 @@ def _clip01(x):
     return float(max(0.0, min(1.0, x)))
 
 
+# ============ 第一层：元数据初筛分（零下载，接入时瞬间出）============
+def metadata_quality(meta):
+    """
+    只靠已有元数据估一个粗略质量分(0~1)，不下载任何数据 —— 适合海量联邦数据集
+    人人有分。这是"初筛"，不是"深度质检"（深度质检需读真实轨迹，见 compute_quality）。
+
+    打分依据（都来自元数据）：
+      - 模态覆盖：rgb/state/language/depth 越全越好
+      - 规模：轨迹数越多越好（对数缩放）
+      - 失败标注：有失败数据更有训练价值，加分
+      - 元数据完整度：许可/频率/摄像头/任务描述 填得越全越可信
+    """
+    import math
+    report = {}
+
+    mods = set(getattr(meta, "modalities", []) or [])
+    mod_cov = min(len(mods) / 3.0, 1.0)               # 3+ 种模态给满分
+    report["modality_coverage"] = round(mod_cov, 2)
+
+    n = getattr(meta, "n_episodes", 0) or 0
+    scale = min(math.log10(n + 1) / 3.0, 1.0)         # ~1000 条轨迹给满分
+    report["episode_scale"] = round(scale, 2)
+
+    fail = 1.0 if getattr(meta, "has_failure_labels", False) else 0.0
+    report["has_failure_labels"] = bool(fail)
+
+    comp = 0
+    comp += 1 if getattr(meta, "license_spdx", "unknown") not in ("", "unknown") else 0
+    comp += 1 if (getattr(meta, "fps", 0) or 0) > 0 else 0
+    comp += 1 if (getattr(meta, "n_cameras", 0) or 0) > 0 else 0
+    comp += 1 if (getattr(meta, "tasks", []) or []) else 0
+    completeness = comp / 4.0
+    report["metadata_completeness"] = round(completeness, 2)
+
+    score = 0.30 * mod_cov + 0.30 * scale + 0.15 * fail + 0.25 * completeness
+    report["tier"] = "metadata"
+    return round(_clip01(score), 3), report
+
+
 def compute_quality(canon: dict) -> dict:
     """
     输入：canonical episode（含 images / state / action / fps）。
