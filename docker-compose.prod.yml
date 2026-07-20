@@ -1,0 +1,64 @@
+# 生产部署（适配阿里云服务器：公网口 8080-8089、数据盘 /data、国内走 HF 镜像）
+# 自包含，一条命令起：
+#   docker compose -f docker-compose.prod.yml up -d --build
+# 门户：       http://<公网IP>:8080
+# 后端 API 文档：http://<公网IP>:8081/docs
+#
+# ⚠️ 上线前务必：把下面的 CHANGE_ME 数据库密码改掉。
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=mdh
+      - POSTGRES_PASSWORD=CHANGE_ME_db_pw     # ← 改成强密码
+      - POSTGRES_DB=datahub
+    volumes:
+      - /data/pgdata:/var/lib/postgresql/data  # 数据盘持久化
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mdh -d datahub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # 不发布端口 → 数据库只在内网，不暴露公网
+
+  backend:
+    build: .
+    environment:
+      - MDH_DB=postgresql://mdh:CHANGE_ME_db_pw@db:5432/datahub   # ← 与上面一致
+      - HF_ENDPOINT=https://hf-mirror.com      # 国内走镜像：接入 + 模型下载才不卡
+      - HF_HOME=/data/hf_cache                 # 模型/缓存放数据盘
+    volumes:
+      - /data/hf_cache:/data/hf_cache
+      - /data/viz_cache:/tmp/mdh_viz_cache     # 可视化转码缓存持久化
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "8081:8000"                            # 仅为方便看 API 文档；不需要可删这两行
+
+  frontend:
+    build: ./web
+    ports:
+      - "8080:80"                              # 门户公网入口（在 8080-8089 段内）
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    command: ["python", "scheduler.py"]
+    environment:
+      - MDH_DB=postgresql://mdh:CHANGE_ME_db_pw@db:5432/datahub   # ← 与上面一致
+      - HF_ENDPOINT=https://hf-mirror.com
+      - HF_HOME=/data/hf_cache
+      - MDH_SCHEDULE_HOURS=24                   # 每天自动刷新一次
+      - MDH_INGEST_TASK=robotics
+      - MDH_INGEST_LIMIT=50
+    volumes:
+      - /data/hf_cache:/data/hf_cache
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped

@@ -6,6 +6,7 @@
 已对齐升级后的 Catalog Entry schema（schema.py）。
 """
 
+import os
 import duckdb
 from schema import (
     DatasetMeta, EpisodeMeta, license_fields,
@@ -13,7 +14,8 @@ from schema import (
     insert_sql, to_db_values,
 )
 
-DB_PATH = "catalog.duckdb"
+# 数据库路径可用环境变量覆盖（Docker 挂卷 / 换库时用）
+DB_PATH = os.environ.get("MDH_DB", "catalog.duckdb")
 
 INSERT_DATASET = insert_sql("datasets", DatasetMeta)
 INSERT_EPISODE = insert_sql("episodes", EpisodeMeta)
@@ -81,55 +83,54 @@ def build_sample_metadata():
     return datasets, episodes
 
 
-# ---------------- 连接 & 初始化 ----------------
-def get_connection(db_path=DB_PATH, read_only=False):
-    return duckdb.connect(db_path, read_only=read_only)
+# ---------------- 连接 & 初始化（经 store 抽象，支持 DuckDB / Postgres）----------------
+import store
+
+
+def get_connection(db_path=None, read_only=False):
+    return store.connect(read_only=read_only)
 
 
 def _table_empty(con, table):
-    try:
-        return con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
-    except Exception:
-        return True
+    row = store.one(con, f"SELECT COUNT(*) FROM {table}")
+    return (row is None) or (row[0] == 0)
 
 
 def _has_column(con, table, col):
-    try:
-        cols = [r[1] for r in con.execute(f"PRAGMA table_info('{table}')").fetchall()]
-        return col in cols
-    except Exception:
-        return False
+    return store.has_column(con, table, col)
 
 
-def _schema_outdated(con, table, dc):
-    """已存在的表若缺少 dataclass 里的任何字段，则视为旧版结构、需重建。"""
+def _migrate_columns(con, table, dc):
+    """加列不删表：为已存在的表补齐 dataclass 里新增的字段（**保留数据**）。
+    新字段一律追加在 dataclass 末尾，ALTER 也追加在表末尾，列序保持一致，
+    定位插入(positional INSERT)不会错位。"""
     from dataclasses import fields as dc_fields
-    expected = {f.name for f in dc_fields(dc)}
-    try:
-        cols = {r[1] for r in con.execute(f"PRAGMA table_info('{table}')").fetchall()}
-    except Exception:
-        return False              # 表不存在，交给 CREATE 处理
+    from schema import _col_type
+    cols = set(store.table_columns(con, table))
     if not cols:
-        return False
-    return not expected.issubset(cols)
+        return                    # 表不存在，交给 CREATE 处理
+    for f in dc_fields(dc):
+        if f.name not in cols:
+            store.run(con, store.ddl(
+                f"ALTER TABLE {table} ADD COLUMN {f.name} {_col_type(f.type)}"))
 
 
 def insert_datasets(con, datasets):
-    con.executemany(INSERT_DATASET, [to_db_values(d) for d in datasets])
+    store.run_many(con, INSERT_DATASET, [to_db_values(d) for d in datasets])
 
 
 def insert_episodes(con, episodes):
-    con.executemany(INSERT_EPISODE, [to_db_values(e) for e in episodes])
+    store.run_many(con, INSERT_EPISODE, [to_db_values(e) for e in episodes])
 
 
-def ensure_catalog(db_path=DB_PATH):
+def ensure_catalog(db_path=None):
     """确保目录存在且非空；为空则灌入样例数据。返回连接。"""
-    con = get_connection(db_path)
-    # 若检测到旧版表结构（缺少任何新列），自动丢弃重建，避免"列不存在"报错
-    if _schema_outdated(con, "datasets", DatasetMeta) or _schema_outdated(con, "episodes", EpisodeMeta):
-        con.execute("DROP TABLE IF EXISTS datasets; DROP TABLE IF EXISTS episodes;")
-    con.execute(CREATE_DATASETS_TABLE)
-    con.execute(CREATE_EPISODES_TABLE)
+    con = store.connect()
+    store.run(con, store.ddl(CREATE_DATASETS_TABLE))
+    store.run(con, store.ddl(CREATE_EPISODES_TABLE))
+    # 新增字段用"加列"迁移，绝不丢表——保住已接入的数据
+    _migrate_columns(con, "datasets", DatasetMeta)
+    _migrate_columns(con, "episodes", EpisodeMeta)
     if _table_empty(con, "datasets"):
         datasets, episodes = build_sample_metadata()
         insert_datasets(con, datasets)
@@ -146,8 +147,11 @@ def query_datasets(con, search="", embodiments=None, formats=None, provenances=N
         sql += " AND quality_score >= ?"
         params.append(float(min_quality))
     if search:
-        sql += " AND (lower(name) LIKE ? OR lower(dataset_id) LIKE ?)"
-        params += [f"%{search.lower()}%", f"%{search.lower()}%"]
+        # 名称 / ID / 任务描述 / 机器人型号 都参与匹配，让"搜内容"真正好用
+        sql += (" AND (lower(name) LIKE ? OR lower(dataset_id) LIKE ? "
+                "OR lower(tasks) LIKE ? OR lower(robot_model) LIKE ?)")
+        kw = f"%{search.lower()}%"
+        params += [kw, kw, kw, kw]
     if embodiments:
         sql += f" AND embodiment IN ({','.join(['?']*len(embodiments))})"
         params += list(embodiments)
@@ -165,39 +169,36 @@ def query_datasets(con, search="", embodiments=None, formats=None, provenances=N
         sql += " AND n_episodes >= ?"
         params.append(int(min_episodes))
     sql += " ORDER BY n_episodes DESC"
-    return con.execute(sql, params).df()
+    return store.run_df(con, sql, params)
 
 
 def get_episodes(con, dataset_id):
-    return con.execute(
+    return store.run_df(con,
         "SELECT episode_index, task_text, success, length, duration_s, action_dim, state_dim "
-        "FROM episodes WHERE dataset_id = ? ORDER BY episode_index", [dataset_id]
-    ).df()
+        "FROM episodes WHERE dataset_id = ? ORDER BY episode_index", [dataset_id])
 
 
 def distinct_values(con, column):
     try:
-        rows = con.execute(f"SELECT DISTINCT {column} FROM datasets "
-                           f"WHERE {column} IS NOT NULL AND {column} != '' "
-                           f"ORDER BY {column}").fetchall()
+        rows = store.run(con, f"SELECT DISTINCT {column} FROM datasets "
+                              f"WHERE {column} IS NOT NULL AND {column} != '' "
+                              f"ORDER BY {column}")
         return [r[0] for r in rows]
     except Exception:
         return []
 
 
 def summary_stats(con):
-    row = con.execute(
+    row = store.one(con,
         "SELECT COUNT(*) AS n_datasets, COALESCE(SUM(n_episodes),0) AS n_episodes, "
-        "COALESCE(SUM(total_frames),0) AS n_frames FROM datasets"
-    ).fetchone()
+        "COALESCE(SUM(total_frames),0) AS n_frames FROM datasets")
     return {"n_datasets": row[0], "n_episodes": row[1], "n_frames": row[2]}
 
 
 def by_embodiment(con):
-    return con.execute(
+    return store.run_df(con,
         "SELECT embodiment, SUM(n_episodes) AS episodes FROM datasets "
-        "GROUP BY embodiment ORDER BY episodes DESC"
-    ).df()
+        "GROUP BY embodiment ORDER BY episodes DESC")
 
 
 def hf_visualizer_url(dataset_id):

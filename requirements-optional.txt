@@ -1,0 +1,10 @@
+# 可选环境（仅"深度质检 06 / 真实数据回放 01 --repo-id"才需要）
+# lerobot 依赖旧版 huggingface_hub，会和核心环境的 sentence-transformers 冲突，
+# 所以【单独装在另一个虚拟环境】里用，不要和 requirements.txt 混装。
+#
+#   python3 -m venv .venv-lerobot
+#   source .venv-lerobot/bin/activate
+#   pip install -r requirements-optional.txt
+#
+lerobot
+rerun-sdk

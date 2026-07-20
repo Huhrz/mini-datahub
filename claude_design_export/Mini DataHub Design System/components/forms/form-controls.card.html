@@ -1,0 +1,31 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Form controls" subtitle="SearchInput, Select, Checkbox, Slider — the filter sidebar's vocabulary" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<div id="root" style="padding:20px;background:var(--surface-card);font-family:var(--font-sans);max-width:280px"></div>
+<script type="text/babel">
+  const { SearchInput, Select, Checkbox, Slider } = window.MiniDataHubDesignSystem_f6abe1;
+  function Demo() {
+    const [q, setQ] = React.useState("");
+    const [emb, setEmb] = React.useState("");
+    const [c1, setC1] = React.useState(true);
+    const [c2, setC2] = React.useState(false);
+    const [s, setS] = React.useState(0.4);
+    return (
+      <div>
+        <SearchInput value={q} onChange={setQ} />
+        <div style={{height:12}} />
+        <Select label="本体类型" value={emb} onChange={setEmb}
+          options={[{value:"", label:"（不限）"}, {value:"bimanual", label:"bimanual"}, {value:"humanoid", label:"humanoid"}]} />
+        <Checkbox label="仅可商用" checked={c1} onChange={setC1} />
+        <Checkbox label="仅含失败标注" checked={c2} onChange={setC2} />
+        <Slider label="最低质量分" value={s} onChange={setS} format={(v)=>v.toFixed(2)} />
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+  setTimeout(() => window.lucide && window.lucide.createIcons(), 50);
+</script>

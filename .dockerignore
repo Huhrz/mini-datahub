@@ -1,0 +1,11 @@
+.venv/
+.venv-lerobot/
+__pycache__/
+*.pyc
+*.duckdb
+*.duckdb.wal
+*.rrd
+web/node_modules/
+web/dist/
+.git/
+claude_design_export/

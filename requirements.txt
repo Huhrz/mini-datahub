@@ -1,14 +1,19 @@
-numpy
-pandas
+# 核心运行环境（后端 API + 摄入 + 语义搜索）
+# 注意：这里【不含 lerobot】——lerobot 锁死了旧版 huggingface_hub，会和
+# sentence-transformers 冲突。lerobot 只有"深度质检/真实回放"才用到，
+# 放到独立环境 requirements-optional.txt，避免污染核心依赖。
+fastapi
+uvicorn[standard]
 duckdb
-streamlit
-rerun-sdk
+pandas
+numpy
 huggingface_hub
 requests
-fastapi
-uvicorn
-# 按需安装（只有用到对应功能才需要）：
-# lerobot               # 加载真实 LeRobot 数据集做可视化/质检（较大）
-# h5py                  # 接入 HDF5 格式数据集（09_ingest.py hdf5）
-# mcap                  # 接入 rosbag/MCAP 格式数据集（09_ingest.py mcap）
-# sentence-transformers # 语义对齐(12_tag_concepts.py)，首次下载约几百 MB 多语言模型
+sentence-transformers
+psycopg[binary]     # 生产用 Postgres 时需要（本地 DuckDB 用不到，装着不影响）
+# 接入本地格式时按需装：
+h5py            # HDF5 适配器
+mcap            # rosbag/MCAP 适配器
+# 自建可视化：把 HDF5 里的帧转码成 mp4（imageio-ffmpeg 自带静态 ffmpeg，无需系统安装）
+imageio
+imageio-ffmpeg

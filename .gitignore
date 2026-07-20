@@ -13,6 +13,7 @@ __pycache__/
 
 # 虚拟环境
 .venv/
+.venv-lerobot/
 venv/
 env/
 
@@ -32,3 +33,9 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# 运行时缓存 / 生成产物（不进版本库）
+viz_previews.json
+reports/
+croissant/
+hf_cache/

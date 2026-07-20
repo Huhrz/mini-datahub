@@ -1,0 +1,21 @@
+/* Minimal reset + body defaults, sourced from the app's index.css
+   (system stack, #f7f8fc-ish background) mapped onto tokens. */
+* {
+  box-sizing: border-box;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+}
+body {
+  font-family: var(--font-sans);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--duration-slow) var(--ease-standard), color var(--duration-slow) var(--ease-standard);
+}
+code, kbd, samp {
+  font-family: var(--font-mono);
+}

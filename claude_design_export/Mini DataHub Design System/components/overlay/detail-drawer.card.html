@@ -1,0 +1,30 @@
+<!-- @dsCard group="Components" viewport="700x360" name="DetailDrawer" subtitle="Right slide-over panel, click to open" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<div id="root" style="padding:20px;background:var(--surface-page)"></div>
+<script type="text/babel">
+  const { DetailDrawer, Tag, Button } = window.MiniDataHubDesignSystem_f6abe1;
+  function Demo() {
+    const [open, setOpen] = React.useState(true);
+    return (
+      <React.Fragment>
+        <button onClick={() => setOpen(true)} style={{padding:"8px 14px", borderRadius:8, border:"1px solid var(--border-default)", background:"var(--surface-card)", cursor:"pointer"}}>打开详情面板</button>
+        <DetailDrawer open={open} onClose={() => setOpen(false)} title="ALOHA Sim Insertion" subtitle="lerobot/aloha_sim_insertion_human">
+          <div style={{marginBottom:12}}>
+            <Tag tone="accent">bimanual</Tag>
+            <Tag tone="neutral">400 轨迹</Tag>
+            <Tag tone="success">可商用</Tag>
+          </div>
+          <div style={{fontSize:"var(--text-sm)", color:"var(--text-secondary)", marginBottom:16}}>
+            许可证：apache-2.0　源格式：lerobot_v3
+          </div>
+          <Button variant="primary" icon="play">在线可视化</Button>
+        </DetailDrawer>
+      </React.Fragment>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+</script>

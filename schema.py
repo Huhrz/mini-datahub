@@ -68,6 +68,15 @@ class DatasetMeta:
     linked_benchmarks: list = field(default_factory=list)  # 适用的评测基准
     homepage: str = ""
 
+    # --- 规模/技术细节（enrich 补全；新字段一律追加在末尾，保证列序稳定）---
+    size_bytes: int = 0             # 数据集总字节数（源侧，联邦不搬）
+    avg_episode_frames: float = 0.0  # 平均每条轨迹帧数 = total_frames / n_episodes
+    video_resolution: str = ""      # 主相机分辨率，如 640x480
+    video_codec: str = ""           # 视频编码，如 av1 / h264
+    last_modified: str = ""         # 源最后更新时间（新鲜度）
+    downloads: int = 0              # 源下载量（热度信号）
+    likes: int = 0                  # 源点赞数
+
     def to_row(self):
         return asdict(self)
 

@@ -1,0 +1,19 @@
+<!-- @dsCard group="Components" viewport="700x260" name="DatasetCard" subtitle="List-item card with hover state" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<div id="root" style="padding:20px;background:var(--surface-page);font-family:var(--font-sans);display:flex;flex-direction:column;gap:10px"></div>
+<script type="text/babel">
+  const { DatasetCard } = window.MiniDataHubDesignSystem_f6abe1;
+  function Demo() {
+    return (
+      <React.Fragment>
+        <DatasetCard dataset={{dataset_id:"lerobot/aloha_sim_insertion_human", name:"ALOHA Sim Insertion", embodiment:"bimanual", source_format:"lerobot_v3", commercial_ok:true, n_episodes:400, quality_score:0.91, has_failure_labels:true}} onClick={()=>{}} />
+        <DatasetCard dataset={{dataset_id:"lerobot/pusht", name:"PushT", embodiment:"single_arm", source_format:"lerobot_v3", commercial_ok:false, n_episodes:206, quality_score:0.74}} onClick={()=>{}} />
+      </React.Fragment>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+</script>

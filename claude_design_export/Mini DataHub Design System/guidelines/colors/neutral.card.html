@@ -1,0 +1,14 @@
+<!-- @dsCard group="Colors" viewport="700x220" name="Neutral scale" subtitle="Base grays used for surfaces, borders, text" -->
+<link rel="stylesheet" href="../styles.css">
+<div style="display:flex;font-family:var(--font-sans);padding:16px;gap:0;background:var(--surface-card)">
+  <div style="display:grid;grid-template-columns:repeat(11,1fr);gap:6px;width:100%">
+    <div></div>
+  </div>
+</div>
+<div style="font-family:var(--font-sans);padding:0 16px 16px;background:var(--surface-card);display:grid;grid-template-columns:repeat(11,1fr);gap:6px">
+  <script>
+    document.write([50,100,150,200,300,400,500,600,700,800,900].map(function(v){
+      return '<div style="text-align:center"><div style="height:48px;border-radius:8px;background:var(--gray-'+v+');border:1px solid var(--border-subtle)"></div><div style="font-size:11px;color:var(--text-secondary);margin-top:4px;font-family:var(--font-mono)">'+v+'</div></div>';
+    }).join(''));
+  </script>
+</div>

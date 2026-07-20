@@ -1,0 +1,29 @@
+<!-- @dsCard group="Components" viewport="700x220" name="Button" subtitle="Primary / secondary / ghost, with icons" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<div id="root" style="padding:20px;background:var(--surface-card);font-family:var(--font-sans)"></div>
+<script type="text/babel">
+  const { Button } = window.MiniDataHubDesignSystem_f6abe1;
+  function Demo() {
+    return (
+      <div style={{display:"flex", flexDirection:"column", gap:14}}>
+        <div style={{display:"flex", gap:10, alignItems:"center"}}>
+          <Button variant="primary" icon="play">在线可视化</Button>
+          <Button variant="secondary" icon="link">数据集主页</Button>
+          <Button variant="ghost">取消</Button>
+        </div>
+        <div style={{display:"flex", gap:10, alignItems:"center"}}>
+          <Button variant="primary" size="sm">应用筛选</Button>
+          <Button variant="secondary" size="sm">重置</Button>
+          <Button variant="primary" disabled>已禁用</Button>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+  setTimeout(() => window.lucide && window.lucide.createIcons(), 50);
+</script>

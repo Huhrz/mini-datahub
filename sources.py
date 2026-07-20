@@ -47,6 +47,54 @@ def available():
     return list(REGISTRY)
 
 
+import re
+
+# 只在有真实信号时判定 simulation；其余一律 unknown（不假装是 teleop）。
+# 采集方式(遥操作/脚本/仿真/自主/人类视频)通常无法从元数据可靠判定，诚实为上。
+_SIM_RE = re.compile(
+    r"(^|[_\-/ ])(sim|simulation|simulated|mujoco|isaac|isaacgym|genesis|"
+    r"pybullet|sapien|gazebo|synthetic)([_\-/ ]|$)")
+
+
+def _detect_provenance(*hints) -> str:
+    blob = " ".join(str(h) for h in hints if h).lower()
+    if _SIM_RE.search(blob):
+        return "simulation"
+    return "unknown"
+
+
+def _video_specs(feats: dict):
+    """从 features 取主相机分辨率(WxH)与视频编码。LeRobot shape 常见 [H,W,C]。"""
+    for v in feats.values():
+        if v.get("dtype") == "video":
+            shp = v.get("shape") or []
+            res = f"{int(shp[1])}x{int(shp[0])}" if len(shp) >= 2 else ""
+            codec = (v.get("video_info") or {}).get("video.codec", "") or ""
+            return res, codec
+    return "", ""
+
+
+def _hf_meta(repo_id: str) -> dict:
+    """一次 dataset_info 调用取 license / 总大小 / 更新时间 / 下载 / 点赞。"""
+    out = {"license": "unknown", "size_bytes": 0, "last_modified": "", "downloads": 0, "likes": 0}
+    try:
+        from huggingface_hub import dataset_info
+        di = dataset_info(repo_id, files_metadata=True)
+        out["license"] = (di.card_data or {}).get("license", "unknown") or "unknown"
+        out["last_modified"] = str(getattr(di, "lastModified", "") or "")[:10]
+        out["downloads"] = int(getattr(di, "downloads", 0) or 0)
+        out["likes"] = int(getattr(di, "likes", 0) or 0)
+        total = 0
+        for s in (getattr(di, "siblings", None) or []):
+            sz = getattr(s, "size", None)
+            if sz:
+                total += int(sz)
+        out["size_bytes"] = total
+    except Exception:
+        pass
+    return out
+
+
 def _guess_embodiment(robot_type: str) -> str:
     r = (robot_type or "").lower()
     if "aloha" in r or "bimanual" in r or "dual" in r:
@@ -62,14 +110,11 @@ def _guess_embodiment(robot_type: str) -> str:
 @register("lerobot_hf")
 def from_lerobot_hf(repo_id: str) -> DatasetMeta:
     """只拉 meta/info.json + 卡片 license，组装目录项（联邦：不下数据本体）。"""
-    from huggingface_hub import hf_hub_download, dataset_info
+    from huggingface_hub import hf_hub_download
 
     info = json.load(open(hf_hub_download(repo_id, "meta/info.json", repo_type="dataset")))
-    license_str = "unknown"
-    try:
-        license_str = (dataset_info(repo_id).card_data or {}).get("license", "unknown") or "unknown"
-    except Exception:
-        pass
+    hf = _hf_meta(repo_id)            # license + 大小 + 更新时间 + 热度（一次调用）
+    license_str = hf["license"]
 
     feats = info.get("features", {})
     cams = [k for k, v in feats.items() if v.get("dtype") in ("video", "image")]
@@ -105,15 +150,24 @@ def from_lerobot_hf(repo_id: str) -> DatasetMeta:
             pass
     tasks = list(dict.fromkeys(tasks))[:50]   # 去重 + 限量
 
+    n_ep = int(info.get("total_episodes", 0))
+    n_fr = int(info.get("total_frames", 0))
+    fps = float(info.get("fps", 0) or 0)
+    res, codec = _video_specs(feats)
+
     return DatasetMeta(
         dataset_id=repo_id, name=repo_id.split("/")[-1], source="huggingface",
         source_uri=f"https://huggingface.co/datasets/{repo_id}",
         source_format=f"lerobot_{info.get('codebase_version', 'v?')}",
         license_spdx=spdx, commercial_ok=com, redistribute_ok=redist,
-        provenance_type="teleop", embodiment=_guess_embodiment(robot), robot_model=robot,
-        dof=int(act_dim), modalities=mods, tasks=tasks, fps=float(info.get("fps", 0) or 0),
-        n_cameras=len(cams), n_episodes=int(info.get("total_episodes", 0)),
-        total_frames=int(info.get("total_frames", 0)),
+        provenance_type=_detect_provenance(repo_id, robot), embodiment=_guess_embodiment(robot), robot_model=robot,
+        dof=int(act_dim), modalities=mods, tasks=tasks, fps=fps,
+        n_cameras=len(cams), n_episodes=n_ep, total_frames=n_fr,
+        duration_s=round(n_fr / fps, 1) if fps else 0.0,
+        avg_episode_frames=round(n_fr / n_ep, 1) if n_ep else 0.0,
+        video_resolution=res, video_codec=codec,
+        size_bytes=hf["size_bytes"], last_modified=hf["last_modified"],
+        downloads=hf["downloads"], likes=hf["likes"],
         has_failure_labels=("next.reward" in feats),
         homepage=f"https://huggingface.co/datasets/{repo_id}",
     )
@@ -121,28 +175,61 @@ def from_lerobot_hf(repo_id: str) -> DatasetMeta:
 
 # ================= 适配器 2：Open X-Embodiment / RLDS =================
 def _parse_tfds_info(info: dict, name: str, version: str, url: str) -> DatasetMeta:
-    """从 TFDS dataset_info.json 提取目录项。OXE 里每个 example = 一条轨迹。"""
-    n_ep = 0
+    """从 TFDS dataset_info.json + OXE 登记表提取【富】目录项，归一化到统一 schema。
+    登记表给本体/模态/相机/动作约定（可靠推导）；dataset_info.json 给轨迹数/大小/描述。"""
+    import oxe_registry as R
+
+    # 轨迹数 + 大小（来自实时 dataset_info.json）
+    n_ep, size = 0, 0
     for sp in info.get("splits", []):
         for s in sp.get("shardLengths", []):
             try:
                 n_ep += int(s)
             except Exception:
                 pass
+        try:
+            size += int(sp.get("numBytes", 0) or sp.get("num_bytes", 0) or 0)
+        except Exception:
+            pass
+    if not size:
+        try:
+            size = int(info.get("downloadSize", 0) or info.get("dataSize", 0) or 0)
+        except Exception:
+            pass
     blob = json.dumps(info).lower()
-    mods = []
-    if "image" in blob:
-        mods.append("rgb")
-    if "natural_language" in blob or "language_instruction" in blob:
-        mods.append("language")
-    if "state" in blob:
-        mods.append("state")
+
+    if R.has(name):
+        # 有登记表 → 归一化元数据（跨源可比的核心）
+        mods = R.modalities(name)
+        if ("language_instruction" in blob or "natural_language" in blob) and "language" not in mods:
+            mods.append("language")
+        emb = R.embodiment(name)
+        cams = R.cameras(name)
+        conv, dof = R.action_convention(name)
+        prov = R.provenance(name)
+        n_cam = len(cams)
+    else:
+        # 未登记 → 从 dataset_info.json 尽力启发式抽取
+        mods = []
+        if "image" in blob:
+            mods.append("rgb")
+        if "depth" in blob:
+            mods.append("depth")
+        if "state" in blob or "proprio" in blob:
+            mods.append("state")
+        if "language_instruction" in blob or "natural_language" in blob:
+            mods.append("language")
+        emb, cams, conv, dof, n_cam = "single_arm", [], {}, 0, 0
+        prov = _detect_provenance(name, url)
+
     return DatasetMeta(
         dataset_id=f"oxe/{name}", name=name, source="openx",
-        source_uri=url, source_format="rlds",
-        license_spdx="apache-2.0", commercial_ok=True, redistribute_ok=True,
-        provenance_type="teleop", embodiment="single_arm",
-        modalities=mods, n_episodes=n_ep, version=version,
+        source_uri=url, source_format="rlds", version=version,
+        # OXE 各数据集许可不一，无法逐一核实 → 诚实标未知（导出时按 license 门禁拦截）
+        license_spdx="unknown", commercial_ok=False, redistribute_ok=False,
+        provenance_type=prov, embodiment=emb, dof=dof,
+        action_convention=conv, modalities=mods, n_cameras=n_cam,
+        n_episodes=n_ep, size_bytes=size,
         homepage="https://robotics-transformer-x.github.io/",
     )
 
@@ -170,45 +257,80 @@ def from_openx_rlds(identifier: str) -> DatasetMeta:
 # ================= 适配器 3：HDF5（机构自定义） =================
 @register("hdf5")
 def from_hdf5(path: str) -> DatasetMeta:
-    """读本地 .hdf5/.h5 文件结构，尽力提取元数据（不同实验室布局不一，做启发式）。"""
+    """读本地 .hdf5/.h5 结构，抽取【富】元数据并归一化（相机数/分辨率/状态维/
+    动作约定/帧数/时长/大小/本体）。不同实验室布局不一，做稳健启发式。"""
     import h5py
-    import numpy as np  # noqa
+    import numpy as np
 
-    paths = {}
+    shapes, dtypes = {}, {}
 
     def visit(name, obj):
         if isinstance(obj, h5py.Dataset):
-            paths[name] = obj.shape
+            shapes[name] = obj.shape
+            dtypes[name] = obj.dtype
 
+    fps = 0.0
     with h5py.File(path, "r") as f:
         f.visititems(visit)
         top = list(f.keys())
-        # robomimic 风格：data/demo_0, demo_1 ...
-        n_ep = 0
+        demos = []
         if "data" in f and isinstance(f["data"], h5py.Group):
-            n_ep = sum(1 for k in f["data"].keys() if k.startswith("demo"))
-        if n_ep == 0:
-            n_ep = sum(1 for k in top if k.startswith(("demo", "episode", "traj")))
+            demos = [k for k in f["data"].keys() if k.startswith(("demo", "episode", "traj"))]
+        n_ep = len(demos) or sum(1 for k in top if k.startswith(("demo", "episode", "traj"))) or 1
+        for kk in ("fps", "frame_rate", "control_freq"):
+            if kk in f.attrs:
+                try:
+                    fps = float(f.attrs[kk])
+                except Exception:
+                    pass
 
-    # 找 action 维度
-    dof = 0
-    for k, shp in paths.items():
-        if k.split("/")[-1] in ("action", "actions") and len(shp) >= 1:
-            dof = int(shp[-1])
-            break
+    def _is_img(s, dt):
+        return (len(s) == 4 and s[-1] in (1, 3)) or (len(s) == 3 and dt == np.uint8 and s[1] >= 16 and s[2] >= 16)
+
+    img_keys = [k for k, s in shapes.items() if _is_img(s, dtypes[k])]
+    cam_names = sorted(set(k.split("/")[-1] for k in img_keys))
+    n_cam = len(cam_names)
+    resolution = ""
+    if img_keys:
+        s = shapes[img_keys[0]]
+        if len(s) >= 3:
+            resolution = f"{int(s[2])}x{int(s[1])}"
+
+    dof = state_dim = total_frames = 0
+    for k, s in shapes.items():
+        leaf = k.split("/")[-1]
+        if leaf in ("action", "actions") and len(s) >= 1:
+            if not dof:
+                dof = int(s[-1])
+            total_frames += int(s[0])
+        if leaf in ("qpos", "state", "joint_positions", "ee_pose") and len(s) >= 1 and not state_dim:
+            state_dim = int(s[-1])
+
     mods = []
-    if any("image" in k or "rgb" in k or "camera" in k for k in paths):
+    if img_keys:
         mods.append("rgb")
-    if any(k.split("/")[-1] in ("state", "qpos", "observations") for k in paths):
+    if any("depth" in k.lower() for k in shapes):
+        mods.append("depth")
+    if state_dim or any(k.split("/")[-1] in ("qpos", "state") for k in shapes):
         mods.append("state")
 
+    blob = " ".join(shapes).lower()
+    is_bimanual = ("left" in blob and "right" in blob) or dof >= 12 or "bimanual" in blob
+    emb = "bimanual" if is_bimanual else "single_arm"
+    conv = {"space": "joint"} if any(k.split("/")[-1] in ("qpos", "joint_positions") for k in shapes) else {}
+
     fid = os.path.basename(path)
+    size = os.path.getsize(path) if os.path.exists(path) else 0
     return DatasetMeta(
         dataset_id=f"local/{fid}", name=fid, source="institutional",
         source_uri=os.path.abspath(path), source_format="hdf5",
         license_spdx="unknown", commercial_ok=False, redistribute_ok=False,
-        provenance_type="teleop", embodiment=_guess_embodiment(""),
-        dof=dof, modalities=mods, n_episodes=max(n_ep, 1),
+        provenance_type=_detect_provenance(fid), embodiment=emb,
+        dof=dof, action_convention=conv, modalities=mods, n_cameras=n_cam,
+        n_episodes=max(n_ep, 1), total_frames=total_frames, fps=fps,
+        duration_s=round(total_frames / fps, 1) if fps else 0.0,
+        avg_episode_frames=round(total_frames / n_ep, 1) if n_ep else 0.0,
+        video_resolution=resolution, size_bytes=size,
         homepage="",
     )
 
@@ -216,34 +338,47 @@ def from_hdf5(path: str) -> DatasetMeta:
 # ================= 适配器 4：rosbag / MCAP（ROS 原生） =================
 @register("mcap")
 def from_mcap(path: str) -> DatasetMeta:
-    """读本地 .mcap 文件的 summary（topic/schema/消息数），映射成目录项。"""
+    """读本地 .mcap 的 summary，抽取【富】元数据：相机数/时长/模态/本体/大小。"""
     from mcap.reader import make_reader
 
     topics, total_msgs = [], 0
+    t0 = t1 = None
     with open(path, "rb") as f:
         reader = make_reader(f)
         summary = reader.get_summary()
         if summary and summary.statistics:
-            total_msgs = summary.statistics.message_count
+            st = summary.statistics
+            total_msgs = st.message_count
+            t0 = getattr(st, "message_start_time", None)
+            t1 = getattr(st, "message_end_time", None)
         if summary:
             for ch in summary.channels.values():
                 topics.append(ch.topic)
 
-    mods = []
     joined = " ".join(topics).lower()
-    if "image" in joined or "camera" in joined:
+    img_topics = sorted(set(t for t in topics
+                            if ("image" in t.lower() or "camera" in t.lower())
+                            and "depth" not in t.lower() and "info" not in t.lower()))
+    mods = []
+    if img_topics or "image" in joined or "camera" in joined:
         mods.append("rgb")
-    if "joint" in joined or "state" in joined:
-        mods.append("state")
     if "depth" in joined:
         mods.append("depth")
+    if "joint" in joined or "state" in joined:
+        mods.append("state")
+    if "scan" in joined or "lidar" in joined or "points" in joined:
+        mods.append("lidar")
 
+    dur = round((t1 - t0) / 1e9, 1) if (t0 and t1 and t1 > t0) else 0.0
+    emb = "bimanual" if ("left" in joined and "right" in joined) else "single_arm"
     fid = os.path.basename(path)
+    size = os.path.getsize(path) if os.path.exists(path) else 0
     return DatasetMeta(
         dataset_id=f"local/{fid}", name=fid, source="institutional",
         source_uri=os.path.abspath(path), source_format="mcap",
         license_spdx="unknown", commercial_ok=False, redistribute_ok=False,
-        provenance_type="teleop", embodiment=_guess_embodiment(""),
-        modalities=mods, n_episodes=1, total_frames=total_msgs,
+        provenance_type=_detect_provenance(fid), embodiment=emb,
+        modalities=mods, n_cameras=len(img_topics), n_episodes=1,
+        total_frames=total_msgs, duration_s=dur, size_bytes=size,
         homepage="",
     )

@@ -1,0 +1,10 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Accent scale" subtitle="Single flat indigo accent — no gradients" -->
+<link rel="stylesheet" href="../styles.css">
+<div style="font-family:var(--font-sans);padding:16px;background:var(--surface-card);display:grid;grid-template-columns:repeat(9,1fr);gap:6px">
+  <script>
+    document.write([50,100,200,300,400,500,600,700,800].map(function(v){
+      var textColor = v>=500 ? '#fff' : 'var(--text-primary)';
+      return '<div style="text-align:center"><div style="height:48px;border-radius:8px;background:var(--accent-'+v+');display:flex;align-items:center;justify-content:center;font-size:10px;color:'+textColor+';font-family:var(--font-mono)">'+v+'</div></div>';
+    }).join(''));
+  </script>
+</div>

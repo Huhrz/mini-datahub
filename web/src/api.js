@@ -18,4 +18,13 @@ export const api = {
   datasets: (filters) => get("/datasets", filters),
   detail: (id) => get(`/datasets/${id}`),
   coverage: () => get("/coverage"),
+  search: (q, page, page_size) => get("/search", { q, page, page_size }),
+  exportManifest: (ids) => get("/export", { ids: ids.join(",") }),
+  preview: (id) => get(`/preview/${id}`),
+  samples: (id) => get(`/samples/${id}`),
+  episode: (id, ep = 0) => get(`/episode/${id}`, { ep }),
+  croissantUrl: (id) => `${BASE}/croissant/${id}`,
+  similar: (id) => get(`/similar/${id}`),
+  gaps: () => get("/gaps"),
+  benchmarks: (id) => get(`/benchmarks/${id}`),
 };

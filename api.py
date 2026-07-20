@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import hub_data as hd
 import taxonomy as tx
+import store
 
 app = FastAPI(title="RoboticDataHub API", version="0.1.0")
 
@@ -31,12 +32,12 @@ app.add_middleware(
 
 
 def _open_catalog():
-    """优先只读打开（后端只读数据、不占写锁，减少和其它进程抢锁）；
-    库不存在时才创建 + 灌样例数据。"""
-    if os.path.exists(hd.DB_PATH):
+    """打开目录连接。Postgres 天生支持并发读写；DuckDB 则优先只读打开
+    （不占写锁，减少和摄入进程抢锁）。库不存在时创建 + 灌样例数据。"""
+    if store.is_pg() or os.path.exists(hd.DB_PATH):
         try:
-            con = hd.get_connection(hd.DB_PATH, read_only=True)
-            con.execute("SELECT 1 FROM datasets LIMIT 1")
+            con = store.connect(read_only=not store.is_pg())
+            store.run(con, "SELECT 1 FROM datasets LIMIT 1")
             return con
         except Exception:
             pass
@@ -81,11 +82,20 @@ def facets():
         }
 
 
+def _link_health_map():
+    """dataset_id -> alive(bool)。没有 link_health 表时返回空 dict。"""
+    try:
+        return {r[0]: bool(r[1]) for r in store.run(_con, "SELECT dataset_id, alive FROM link_health")}
+    except Exception:
+        return {}
+
+
 @app.get("/api/datasets")
 def datasets(
     search: str = "", embodiment: str = "", format: str = "", provenance: str = "",
     commercial_only: bool = False, failures_only: bool = False,
     min_episodes: int = 0, min_quality: float = 0.0, concept: str = "",
+    page: int = 1, page_size: int = 20,
 ):
     with _lock:
         df = hd.query_datasets(
@@ -98,23 +108,245 @@ def datasets(
         )
         rows = [_parse_row(r) for r in df.to_dict(orient="records")]
 
-        # 按任务概念过滤（优先读 concept_tags 表）
-        if concept:
+        # 按任务概念过滤：concept 支持多选（逗号分隔），命中任一即保留
+        concepts = [c for c in (concept or "").split(",") if c.strip()]
+        if concepts:
             try:
-                ids = {r[0] for r in _con.execute(
-                    "SELECT dataset_id FROM concept_tags WHERE category='tasks' AND concept_id=?",
-                    [concept]).fetchall()}
+                placeholders = ",".join(["?"] * len(concepts))
+                ids = {r[0] for r in store.run(_con,
+                    f"SELECT dataset_id FROM concept_tags WHERE category='tasks' "
+                    f"AND concept_id IN ({placeholders})", concepts)}
                 rows = [r for r in rows if r["dataset_id"] in ids]
             except Exception:
                 rows = [r for r in rows
-                        if concept in tx.align_many(r.get("tasks", []), "tasks")[0]]
-    return {"count": len(rows), "datasets": rows}
+                        if set(concepts) & tx.align_many(r.get("tasks", []), "tasks")[0]]
+
+        total = len(rows)
+        # 服务端分页：大列表不一次性返回，前端不卡
+        page = max(1, page)
+        page_size = max(1, min(page_size, 100))
+        start = (page - 1) * page_size
+        page_rows = rows[start:start + page_size]
+
+        # 附加链接存活状态（失效链接前端标红）
+        health = _link_health_map()
+        for r in page_rows:
+            r["link_alive"] = health.get(r["dataset_id"])   # True/False/None(未检查)
+
+    return {"count": total, "page": page, "page_size": page_size,
+            "pages": (total + page_size - 1) // page_size, "datasets": page_rows}
+
+
+@app.get("/api/export")
+def export_manifest(ids: str = "", commercial_only: bool = False):
+    """训练清单导出（G3）+ License 门禁（设计原则5）：给一组数据集，产出可复现的
+    data-mixture 清单（指向源，不搬数据）。按 license 自动放行/拦截并给出警示。
+    commercial_only=true 时，直接把非商用数据集从清单里剔除（硬门禁）。"""
+    id_list = [x for x in ids.split(",") if x.strip()]
+    if not id_list:
+        return {"error": "no ids"}
+    with _lock:
+        ph = ",".join(["?"] * len(id_list))
+        df = store.run_df(_con,
+            f"SELECT dataset_id, name, source, source_uri, source_format, license_spdx, "
+            f"commercial_ok, redistribute_ok, embodiment, n_episodes, quality_score FROM datasets "
+            f"WHERE dataset_id IN ({ph})", id_list)
+    items = df.to_dict(orient="records")
+    for i in items:
+        i["commercial_ok"] = bool(i.get("commercial_ok"))
+        i["redistribute_ok"] = bool(i.get("redistribute_ok"))
+
+    blocked = []
+    included = []
+    for i in items:
+        if commercial_only and not i["commercial_ok"]:
+            blocked.append(i["dataset_id"])          # 硬门禁：剔除
+        else:
+            included.append(i)
+
+    non_comm = [i["dataset_id"] for i in included if not i["commercial_ok"]]
+    non_redist = [i["dataset_id"] for i in included if not i["redistribute_ok"]]
+    warnings = []
+    if non_comm:
+        warnings.append(f"{len(non_comm)} 个数据集为非商用许可，请勿用于商业训练。")
+    if non_redist:
+        warnings.append(f"{len(non_redist)} 个数据集不可再分发，仅可按源许可就地使用。")
+    if blocked:
+        warnings.append(f"已按 commercial_only 门禁剔除 {len(blocked)} 个非商用数据集。")
+
+    return {
+        "manifest_version": "1.1",
+        "note": "联邦训练清单：指向数据源，不含数据本体。weight 可自行调整。",
+        "n_datasets": len(included),
+        "total_episodes": int(sum(int(i.get("n_episodes") or 0) for i in included)),
+        "license_gating": {
+            "commercial_only": commercial_only,
+            "blocked": blocked,
+            "non_commercial": non_comm,
+            "non_redistributable": non_redist,
+            "warnings": warnings,
+        },
+        "datasets": [{**i, "weight": 1.0} for i in included],
+    }
+
+
+@app.get("/api/croissant/{dataset_id:path}")
+def croissant_record(dataset_id: str):
+    """Croissant 1.1 元数据（G5）：对外发现层，可提交 Google Dataset Search。
+    联邦：distribution 指向源，不 re-host。返回 application/ld+json。"""
+    from fastapi.responses import JSONResponse
+    import croissant as cr
+    with _lock:
+        df = store.run_df(_con, "SELECT * FROM datasets WHERE dataset_id = ?", [dataset_id])
+    if df.empty:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    row = _parse_row(df.to_dict(orient="records")[0])
+    return JSONResponse(cr.build_croissant(row),
+                        media_type="application/ld+json; charset=utf-8")
+
+
+def _fmt_of(row: dict) -> str:
+    """归一到播放器认识的格式：'lerobot' / 'hdf5' / ''（暂不支持）。"""
+    sf = str(row.get("source_format", ""))
+    if row.get("source") == "huggingface" or "lerobot" in sf:
+        return "lerobot"
+    if "hdf5" in sf or "h5" in sf:
+        return "hdf5"
+    return ""
+
+
+# ---------------- 样本缓存（预计算 + 持久化）----------------
+# 上万条轨迹不全量拉。每个数据集只在首次接触时解析一小撮"代表性样本"的片段坐标，
+# 存到磁盘 JSON（避开 DuckDB 只读连接的写锁问题）。之后浏览只读缓存，秒开、不再打 HF。
+_PREVIEW_CACHE_PATH = os.path.abspath("viz_previews.json")
+_cache_lock = threading.Lock()
+_preview_cache = {}
+
+
+def _load_preview_cache():
+    global _preview_cache
+    try:
+        with open(_PREVIEW_CACHE_PATH) as f:
+            _preview_cache = json.load(f)
+    except Exception:
+        _preview_cache = {}
+
+
+def _save_preview_cache():
+    try:
+        with open(_PREVIEW_CACHE_PATH, "w") as f:
+            json.dump(_preview_cache, f)
+    except Exception:
+        pass
+
+
+_load_preview_cache()
+
+
+def _compute_samples(dataset_id: str) -> dict:
+    with _lock:
+        df = store.run_df(_con, "SELECT source, source_format, source_uri FROM datasets WHERE dataset_id = ?", [dataset_id])
+    if df.empty:
+        return {"thumbnail": "", "samples": []}
+    row = df.to_dict(orient="records")[0]
+    fmt = _fmt_of(row)
+    import episode as ep_mod
+    if fmt == "lerobot":
+        return ep_mod.samples(dataset_id)
+    if fmt == "hdf5":
+        return ep_mod.hdf5_samples(dataset_id, row.get("source_uri"))
+    return {"thumbnail": "", "samples": []}
+
+
+def _get_samples(dataset_id: str, force: bool = False) -> dict:
+    if not force:
+        with _cache_lock:
+            if dataset_id in _preview_cache:
+                return _preview_cache[dataset_id]
+    try:
+        data = _compute_samples(dataset_id)
+    except Exception:
+        data = {"thumbnail": "", "samples": []}
+    with _cache_lock:
+        _preview_cache[dataset_id] = data
+        _save_preview_cache()
+    return data
+
+
+@app.get("/api/samples/{dataset_id:path}")
+def samples(dataset_id: str, refresh: int = 0):
+    """详情页用：~10 条代表性样本的片段坐标（缩略图 + 每条 cameras/clip）。缓存到磁盘。"""
+    return {"dataset_id": dataset_id, **_get_samples(dataset_id, force=bool(refresh))}
+
+
+@app.get("/api/preview/{dataset_id:path}")
+def preview(dataset_id: str):
+    """卡片缩略图：极轻路径 —— 只读 info.json 拼首个视频文件 URL（不碰 meta/episodes /
+    httpfs / 大文件）。这样 v3.0 封面也能稳定出图。"""
+    with _lock:
+        df = store.run_df(_con, "SELECT source, source_format, source_uri FROM datasets WHERE dataset_id = ?", [dataset_id])
+    if df.empty:
+        return {}
+    row = df.to_dict(orient="records")[0]
+    fmt = _fmt_of(row)
+    try:
+        import episode as ep_mod
+        if fmt == "lerobot":
+            return ep_mod.preview(dataset_id)
+        if fmt == "hdf5":
+            return ep_mod.hdf5_preview(dataset_id, row.get("source_uri"))
+    except Exception:
+        return {}
+    return {}
+
+
+@app.get("/api/episode/{dataset_id:path}")
+def episode(dataset_id: str, ep: int = 0):
+    """自建播放器数据：相机视频 + 状态/动作曲线 + fps（替代 HF 的 iframe 页面）。"""
+    with _lock:
+        df = store.run_df(_con, "SELECT source, source_format, source_uri, homepage FROM datasets WHERE dataset_id = ?", [dataset_id])
+    if df.empty:
+        return {"playable": False, "reason": "not found"}
+    row = df.to_dict(orient="records")[0]
+    fmt = _fmt_of(row)
+    if not fmt:
+        return {"playable": False,
+                "reason": "自建播放器目前支持 LeRobot/HF 与 HDF5 格式，其它来源将逐步适配。",
+                "homepage": row.get("homepage")}
+    try:
+        import episode as ep_mod
+        if fmt == "lerobot":
+            return ep_mod.lerobot_episode(dataset_id, int(ep))
+        return ep_mod.hdf5_episode(dataset_id, row.get("source_uri"), int(ep))
+    except Exception as e:
+        return {"playable": False, "reason": f"提取失败：{type(e).__name__}: {e}",
+                "homepage": row.get("homepage")}
+
+
+@app.get("/api/hdf5_video/{dataset_id:path}")
+def hdf5_video(dataset_id: str, cam: str, thumb: int = 0):
+    """把 HDF5 里某路相机转码成 mp4 并回传（缓存）。cam 是文件内数据集路径；
+    source_uri 从库里取（不信任客户端传的本地路径），只服务已入库数据集自己的 h5。"""
+    from fastapi.responses import FileResponse, JSONResponse
+    with _lock:
+        df = store.run_df(_con, "SELECT source_uri, source_format FROM datasets WHERE dataset_id = ?", [dataset_id])
+    if df.empty:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    row = df.to_dict(orient="records")[0]
+    if _fmt_of(row) != "hdf5":
+        return JSONResponse({"error": "not hdf5"}, status_code=400)
+    try:
+        import episode as ep_mod
+        mp4 = ep_mod.hdf5_video_file(row.get("source_uri"), cam, thumb=bool(thumb))
+        return FileResponse(mp4, media_type="video/mp4")
+    except Exception as e:
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
 
 
 @app.get("/api/datasets/{dataset_id:path}")
 def dataset_detail(dataset_id: str):
     with _lock:
-        df = _con.execute("SELECT * FROM datasets WHERE dataset_id = ?", [dataset_id]).df()
+        df = store.run_df(_con, "SELECT * FROM datasets WHERE dataset_id = ?", [dataset_id])
         if df.empty:
             return {"error": "not found"}
         row = _parse_row(df.to_dict(orient="records")[0])
@@ -122,19 +354,17 @@ def dataset_detail(dataset_id: str):
     return {"dataset": row, "episodes": eps}
 
 
-@app.get("/api/coverage")
-def coverage():
-    """本体 × 任务概念 的覆盖度矩阵（用于前端热力图，一眼看 gap）。"""
+def _coverage_counts():
+    """本体 × 任务概念 的计数矩阵。返回 (embodiments, concepts[(id,label)], counts[e][c])。"""
     concepts = tx.concept_options("tasks")
     concept_ids = [cid for cid, _ in concepts]
     with _lock:
         embodiments = hd.distinct_values(_con, "embodiment")
-        rows = _con.execute("SELECT dataset_id, embodiment, tasks FROM datasets").fetchall()
-        # 优先用 concept_tags 表
+        rows = store.run(_con, "SELECT dataset_id, embodiment, tasks FROM datasets")
         tag_map = {}
         try:
-            for did, cid in _con.execute(
-                    "SELECT dataset_id, concept_id FROM concept_tags WHERE category='tasks'").fetchall():
+            for did, cid in store.run(_con,
+                    "SELECT dataset_id, concept_id FROM concept_tags WHERE category='tasks'"):
                 tag_map.setdefault(did, set()).add(cid)
         except Exception:
             tag_map = None
@@ -152,7 +382,14 @@ def coverage():
         for c in cset:
             if emb in counts and c in counts[emb]:
                 counts[emb][c] += 1
+    return embodiments, concepts, counts
 
+
+@app.get("/api/coverage")
+def coverage():
+    """本体 × 任务概念 的覆盖度矩阵（用于前端热力图，一眼看 gap）。"""
+    embodiments, concepts, counts = _coverage_counts()
+    concept_ids = [cid for cid, _ in concepts]
     cells = [{"embodiment": e, "concept": c, "count": counts[e][c]}
              for e in embodiments for c in concept_ids]
     return {
@@ -160,6 +397,144 @@ def coverage():
         "concepts": [{"id": cid, "label": lbl} for cid, lbl in concepts],
         "cells": cells,
     }
+
+
+@app.get("/api/gaps")
+def gaps():
+    """数据缺口报告：哪些 本体×任务概念 组合全球都缺（count=0），以及全局最稀缺的概念。
+    复用覆盖度矩阵，指导'该采什么数据'——数据 hub 的独有价值。"""
+    embodiments, concepts, counts = _coverage_counts()
+    concept_ids = [cid for cid, _ in concepts]
+    labels = {cid: lbl for cid, lbl in concepts}
+    total = len(embodiments) * len(concept_ids)
+    covered = sum(1 for e in embodiments for c in concept_ids if counts[e][c] > 0)
+    empty = [{"embodiment": e, "concept": c, "concept_label": labels[c]}
+             for e in embodiments for c in concept_ids if counts[e][c] == 0]
+    # 全局最稀缺的任务概念（按总数升序）
+    concept_totals = sorted(
+        ({"concept": c, "label": labels[c],
+          "total": sum(counts[e][c] for e in embodiments)} for c in concept_ids),
+        key=lambda x: x["total"])
+    # 各本体覆盖了多少概念
+    emb_coverage = [{"embodiment": e,
+                     "covered": sum(1 for c in concept_ids if counts[e][c] > 0),
+                     "of": len(concept_ids)} for e in embodiments]
+    return {
+        "total_cells": total, "covered": covered,
+        "coverage_pct": round(100 * covered / total, 1) if total else 0,
+        "gap_count": len(empty), "gaps": empty,
+        "scarcest_concepts": concept_totals[:10],
+        "embodiment_coverage": emb_coverage,
+    }
+
+
+# ---------------- 语义搜索（跨语言）----------------
+_emb = {"ids": None, "mat": None, "model": None}
+
+
+def _load_embeddings():
+    import numpy as np
+    try:
+        rows = store.run(_con, "SELECT dataset_id, embedding FROM dataset_embeddings")
+    except Exception:
+        return False
+    if not rows:
+        return False
+    _emb["ids"] = [r[0] for r in rows]
+    _emb["mat"] = np.asarray([json.loads(r[1]) for r in rows], dtype="float32")
+    return True
+
+
+@app.get("/api/similar/{dataset_id:path}")
+def similar(dataset_id: str, k: int = 6):
+    """相似数据集推荐：复用语义向量做最近邻（向量已归一化，点积=余弦相似度）。"""
+    import numpy as np
+    if _emb["ids"] is None:
+        _load_embeddings()
+    if not _emb["ids"] or dataset_id not in _emb["ids"]:
+        return {"dataset_id": dataset_id, "similar": []}
+    idx = _emb["ids"].index(dataset_id)
+    sims = _emb["mat"] @ _emb["mat"][idx]
+    order = np.argsort(-sims)
+    ids, score = [], {}
+    for i in order:
+        did = _emb["ids"][int(i)]
+        if did == dataset_id:
+            continue
+        ids.append(did)
+        score[did] = float(sims[int(i)])
+        if len(ids) >= max(1, min(k, 20)):
+            break
+    if not ids:
+        return {"dataset_id": dataset_id, "similar": []}
+    with _lock:
+        ph = ",".join(["?"] * len(ids))
+        df = store.run_df(_con,
+            f"SELECT dataset_id, name, embodiment, source_format, n_episodes, "
+            f"quality_score, commercial_ok FROM datasets WHERE dataset_id IN ({ph})", ids)
+    byid = {r["dataset_id"]: r for r in df.to_dict(orient="records")}
+    out = [{**byid[d], "score": round(score[d], 3)} for d in ids if d in byid]
+    return {"dataset_id": dataset_id, "similar": out}
+
+
+@app.get("/api/benchmarks/{dataset_id:path}")
+def benchmarks_for(dataset_id: str):
+    """评测出口链接（G4）：按本体 + 任务概念，推荐适用的公开评测基准并回链榜单页。"""
+    import benchmarks as bm
+    with _lock:
+        df = store.run_df(_con, "SELECT embodiment, source FROM datasets WHERE dataset_id = ?", [dataset_id])
+        if df.empty:
+            return {"dataset_id": dataset_id, "benchmarks": []}
+        row = df.to_dict(orient="records")[0]
+        try:
+            concepts = [r[0] for r in store.run(_con,
+                "SELECT concept_id FROM concept_tags WHERE dataset_id = ? AND category='tasks'", [dataset_id])]
+        except Exception:
+            concepts = []
+    return {"dataset_id": dataset_id,
+            "benchmarks": bm.match(row.get("embodiment", ""), concepts, dataset_id, row.get("source", ""))}
+
+
+@app.get("/api/search")
+def search(q: str = "", limit: int = 60):
+    """搜索框专用：有向量表则做跨语言语义排序，否则退回关键词搜索。"""
+    q = (q or "").strip()
+    if not q:
+        return {"count": 0, "datasets": [], "mode": "empty"}
+
+    # 尝试语义搜索
+    try:
+        import numpy as np
+        if _emb["ids"] is None:
+            _load_embeddings()
+        if _emb["ids"]:
+            if _emb["model"] is None:
+                from sentence_transformers import SentenceTransformer
+                _emb["model"] = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+            qv = np.asarray(_emb["model"].encode([q], normalize_embeddings=True)[0], dtype="float32")
+            sims = _emb["mat"] @ qv
+            order = list(np.argsort(-sims)[:limit])
+            ids = [_emb["ids"][i] for i in order]
+            score = {_emb["ids"][i]: float(sims[i]) for i in order}
+            with _lock:
+                df = store.run_df(_con,
+                    f"SELECT * FROM datasets WHERE dataset_id IN ({','.join(['?']*len(ids))})", ids)
+            byid = {r["dataset_id"]: _parse_row(r) for r in df.to_dict(orient="records")}
+            out = []
+            for did in ids:
+                if did in byid and score[did] > 0.15:   # 太不相关的丢弃
+                    row = byid[did]
+                    row["score"] = round(score[did], 3)
+                    out.append(row)
+            return {"count": len(out), "datasets": out, "mode": "semantic"}
+    except Exception:
+        pass
+
+    # 退回关键词搜索
+    with _lock:
+        df = hd.query_datasets(_con, search=q)
+    rows = [_parse_row(r) for r in df.to_dict(orient="records")]
+    return {"count": len(rows), "datasets": rows, "mode": "keyword"}
 
 
 @app.get("/")

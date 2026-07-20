@@ -1,0 +1,10 @@
+<!-- @dsCard group="Spacing" viewport="700x140" name="Spacing scale" subtitle="4px base scale" -->
+<link rel="stylesheet" href="../styles.css">
+<div style="font-family:var(--font-sans);padding:16px;background:var(--surface-card);display:flex;align-items:flex-end;gap:10px">
+  <script>
+    document.write([1,2,3,4,5,6,8,10,12,16].map(function(v){
+      var px = getComputedStyle(document.documentElement).getPropertyValue('--space-'+v) || '';
+      return '<div style="text-align:center"><div style="width:24px;height:var(--space-'+v+');background:var(--accent-300);border-radius:2px;margin:0 auto"></div><div style="font-size:10px;color:var(--text-secondary);margin-top:4px;font-family:var(--font-mono)">'+v+'</div></div>';
+    }).join(''));
+  </script>
+</div>

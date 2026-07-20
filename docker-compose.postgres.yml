@@ -1,0 +1,44 @@
+# 生产变体：用 Postgres 替代 DuckDB —— 后端和摄入可【同时读写】，不用停后端
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up --build
+# 门户 http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=mdh
+      - POSTGRES_PASSWORD=mdh
+      - POSTGRES_DB=datahub
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mdh -d datahub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    environment:
+      - MDH_DB=postgresql://mdh:mdh@db:5432/datahub    # 切到 Postgres
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 定时刷新：每 MDH_SCHEDULE_HOURS 小时自动接入新数据 + 补向量/概念 + 健康检查
+  # （用 Postgres 才能和后端同时读写，不抢锁）
+  scheduler:
+    build: .
+    command: ["python", "scheduler.py"]
+    environment:
+      - MDH_DB=postgresql://mdh:mdh@db:5432/datahub
+      - MDH_SCHEDULE_HOURS=24        # 每天刷新一次
+      - MDH_INGEST_TASK=robotics     # 从全平台枚举机器人数据集
+      - MDH_INGEST_LIMIT=50          # 每轮接入目标数
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,22 @@
+# 一键启动整套：后端(FastAPI) + 前端(Nginx托管React)
+# 用法：  docker compose up --build
+# 然后浏览器打开  http://localhost:8080
+services:
+  backend:
+    build: .
+    environment:
+      - MDH_DB=/data/catalog.duckdb
+    volumes:
+      - catalog:/data          # 目录数据库持久化，容器重启不丢
+    ports:
+      - "8000:8000"            # 直接访问后端/文档: http://localhost:8000/docs
+
+  frontend:
+    build: ./web
+    ports:
+      - "8080:80"             # 门户: http://localhost:8080
+    depends_on:
+      - backend
+
+volumes:
+  catalog:

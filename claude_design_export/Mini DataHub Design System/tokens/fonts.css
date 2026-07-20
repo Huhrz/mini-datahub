@@ -1,0 +1,5 @@
+/* Webfont import — Space Grotesk (UI/display) + IBM Plex Mono (data values),
+   Google Fonts substitution — see readme.md "Visual foundations" for why.
+   Loaded via Google's CSS API rather than vendored binaries, since this
+   repo had no font files to begin with. */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");

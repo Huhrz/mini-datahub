@@ -60,6 +60,14 @@ def main():
         "SELECT name, source_format, embodiment, license_spdx, n_episodes "
         "FROM datasets ORDER BY name"
     ).df().to_string(index=False))
+
+    # 自动给新接入的数据集补算语义向量（增量；没装 sentence-transformers 会安全跳过）
+    try:
+        import embeddings
+        embeddings.embed_missing(con, quiet=False)
+    except Exception as e:
+        print(f"[embeddings] 跳过：{repr(e)[:80]}")
+
     con.close()
 
 

@@ -1,0 +1,169 @@
+/* Mini DataHub — Color tokens (v2: dual light/dark theme, teal/cyan accent)
+   Base neutral + accent scales, plus semantic aliases used throughout the
+   product. Toggle theme by setting data-theme="dark" on <html> (or any
+   ancestor) — every semantic alias below has a dark override; base scales
+   (--gray-*, --accent-*, --teal-*...) stay fixed and semantics repoint. */
+
+:root {
+  color-scheme: light;
+
+  /* ---- Base: neutral (zinc-ish) ---- */
+  --gray-0: #ffffff;
+  --gray-50: #fafafa;
+  --gray-100: #f4f4f5;
+  --gray-150: #eeeef0;
+  --gray-200: #e4e4e7;
+  --gray-300: #d4d4d8;
+  --gray-400: #a1a1aa;
+  --gray-500: #71717a;
+  --gray-600: #52525b;
+  --gray-700: #3f3f46;
+  --gray-800: #27272a;
+  --gray-850: #1c1c1f;
+  --gray-900: #18181b;
+  --gray-925: #131316;
+  --gray-950: #09090b;
+
+  /* ---- Base: accent — teal/cyan (replaces prior indigo) ---- */
+  --accent-50: #ecfeff;
+  --accent-100: #cffafe;
+  --accent-200: #a5f3fc;
+  --accent-300: #67e8f9;
+  --accent-400: #22d3ee;
+  --accent-500: #06b6d4;
+  --accent-600: #0891b2;
+  --accent-700: #0e7490;
+  --accent-800: #155e75;
+  --accent-900: #164e63;
+
+  /* ---- Base: semantic tone scales (tag tones) ---- */
+  --emerald-50: #ecfdf5;
+  --emerald-600: #059669;
+  --emerald-700: #047857;
+
+  --amber-50: #fffbeb;
+  --amber-600: #d97706;
+  --amber-700: #b45309;
+
+  --rose-50: #fff1f2;
+  --rose-600: #e11d48;
+  --rose-700: #be123c;
+
+  --sky-50: #f0f9ff;
+  --sky-600: #0284c7;
+  --sky-700: #0369a1;
+
+  /* ================= Semantic aliases — LIGHT (default) ================= */
+
+  /* Surfaces */
+  --surface-page: var(--gray-50);
+  --surface-card: var(--gray-0);
+  --surface-sunken: var(--gray-100);
+  --surface-inverse: var(--gray-925);
+  --surface-overlay-scrim: rgb(9 9 11 / 0.45);
+
+  /* Text */
+  --text-primary: var(--gray-900);
+  --text-secondary: var(--gray-500);
+  --text-tertiary: var(--gray-400);
+  --text-on-accent: #ffffff;
+  --text-on-inverse: var(--gray-100);
+  --text-link: var(--accent-700);
+
+  /* Borders */
+  --border-subtle: var(--gray-200);
+  --border-default: var(--gray-300);
+  --border-strong: var(--gray-400);
+  --border-focus: var(--accent-500);
+
+  /* Accent (interactive) */
+  --accent: var(--accent-600);
+  --accent-hover: var(--accent-700);
+  --accent-active: var(--accent-800);
+  --accent-subtle: var(--accent-50);
+  --accent-subtle-border: var(--accent-200);
+  --accent-glow: rgb(6 182 212 / 0.18);
+
+  /* Semantic feedback */
+  --success: var(--emerald-600);
+  --success-subtle: var(--emerald-50);
+  --warning: var(--amber-600);
+  --warning-subtle: var(--amber-50);
+  --danger: var(--rose-600);
+  --danger-subtle: var(--rose-50);
+  --info: var(--sky-600);
+  --info-subtle: var(--sky-50);
+
+  /* Tag tone system */
+  --tone-neutral-bg: var(--gray-100);
+  --tone-neutral-fg: var(--gray-700);
+  --tone-accent-bg: var(--accent-100);
+  --tone-accent-fg: var(--accent-700);
+  --tone-success-bg: var(--emerald-50);
+  --tone-success-fg: var(--emerald-700);
+  --tone-warning-bg: var(--amber-50);
+  --tone-warning-fg: var(--amber-700);
+  --tone-danger-bg: var(--rose-50);
+  --tone-danger-fg: var(--rose-700);
+
+  /* Heatmap */
+  --heatmap-empty: var(--gray-100);
+  --heatmap-fill: var(--accent-600);
+}
+
+/* ================= Semantic aliases — DARK override =================
+   Apply data-theme="dark" to <html> or any wrapping element; custom
+   properties inherit down so a demo card can scope it to a local div. */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-page: var(--gray-950);
+  --surface-card: var(--gray-900);
+  --surface-sunken: var(--gray-850);
+  /* surface-inverse/text-on-inverse intentionally NOT overridden here —
+     the header/emphasis panel stays a constant near-black in both themes
+     (matches the reference's always-dark nav bar), rather than flipping
+     to white when the page itself goes dark. */
+  --surface-overlay-scrim: rgb(0 0 0 / 0.6);
+
+  --text-primary: var(--gray-50);
+  --text-secondary: var(--gray-400);
+  --text-tertiary: var(--gray-600);
+  --text-on-accent: #04222a;
+  --text-link: var(--accent-300);
+
+  --border-subtle: var(--gray-800);
+  --border-default: var(--gray-700);
+  --border-strong: var(--gray-600);
+  --border-focus: var(--accent-400);
+
+  --accent: var(--accent-400);
+  --accent-hover: var(--accent-300);
+  --accent-active: var(--accent-200);
+  --accent-subtle: rgb(34 211 238 / 0.12);
+  --accent-subtle-border: rgb(34 211 238 / 0.3);
+  --accent-glow: rgb(34 211 238 / 0.28);
+
+  --success: var(--emerald-600);
+  --success-subtle: rgb(5 150 105 / 0.14);
+  --warning: var(--amber-600);
+  --warning-subtle: rgb(217 119 6 / 0.14);
+  --danger: var(--rose-600);
+  --danger-subtle: rgb(225 29 72 / 0.14);
+  --info: var(--sky-600);
+  --info-subtle: rgb(2 132 199 / 0.14);
+
+  --tone-neutral-bg: var(--gray-800);
+  --tone-neutral-fg: var(--gray-300);
+  --tone-accent-bg: rgb(34 211 238 / 0.16);
+  --tone-accent-fg: var(--accent-300);
+  --tone-success-bg: rgb(5 150 105 / 0.16);
+  --tone-success-fg: #6ee7b7;
+  --tone-warning-bg: rgb(217 119 6 / 0.16);
+  --tone-warning-fg: #fcd34d;
+  --tone-danger-bg: rgb(225 29 72 / 0.16);
+  --tone-danger-fg: #fda4af;
+
+  --heatmap-empty: var(--gray-850);
+  --heatmap-fill: var(--accent-400);
+}

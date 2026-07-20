@@ -39,31 +39,51 @@ def check_url(url, timeout=8):
 
 
 def main():
+    import argparse
+    import time
+    import store
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--write", action="store_true", help="把检查结果写回 link_health 表")
+    ap.add_argument("--workers", type=int, default=16, help="并发检查线程数")
+    args = ap.parse_args()
+
+    # --write 需要写库 -> DuckDB 用读写连接；只读检查时才用只读
+    ro = (not store.is_pg()) and (not args.write)
     try:
-        con = hd.get_connection(hd.DB_PATH, read_only=True)
-        rows = con.execute(
-            "SELECT dataset_id, name, homepage FROM datasets ORDER BY name"
-        ).fetchall()
+        con = store.connect(read_only=ro)
+        rows = store.run(con, "SELECT dataset_id, name, homepage FROM datasets ORDER BY name")
     except Exception as e:
         if "lock" in str(e).lower():
-            print("[提示] 数据库被占用：请先在跑 streamlit 的终端按 Ctrl+C 关闭网页再试。")
+            print("[提示] 数据库被占用：DuckDB 请先关后端；或用 Postgres（可并发）。")
             return
-        print("[提示] 还没有目录，请先运行 02 或 03 生成 catalog.duckdb。")
+        print("[提示] 还没有目录，请先接入数据。")
         return
 
-    print(f"检查 {len(rows)} 个数据集的主页链接…\n")
-    print(f"{'状态':<6}{'数据集':<24}{'链接'}")
-    dead = 0
-    for did, name, homepage in rows:
+    print(f"并发检查 {len(rows)} 个数据集的主页链接…")
+    from concurrent.futures import ThreadPoolExecutor
+    def check(row):
+        did, name, homepage = row
         alive, status = check_url(homepage)
-        mark = "✅ ok" if alive else f"❌ {status}"
+        return (did, name, homepage, alive, str(status))
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        results = list(ex.map(check, rows))
+
+    dead = sum(1 for r in results if not r[3])
+    for did, name, homepage, alive, status in results:
         if not alive:
-            dead += 1
-        print(f"{mark:<6} {name:<22} {homepage}")
+            print(f"❌ {status:<28} {name:<28} {homepage}")
 
     print(f"\n小结：{len(rows)} 个里 {dead} 个链接失效。")
-    if dead:
-        print("失效的链接说明源已被删/改名，真实系统里应触发告警或降级转存（文档第 8 章风险）。")
+
+    if args.write:
+        # 写回 link_health 表：门户可据此标记失效数据集（对应文档"联邦指针失效"风险）
+        store.run(con, "CREATE TABLE IF NOT EXISTS link_health "
+                       "(dataset_id VARCHAR PRIMARY KEY, alive BOOLEAN, status VARCHAR, checked_at VARCHAR)")
+        store.run(con, "DELETE FROM link_health")
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        store.run_many(con, "INSERT INTO link_health VALUES (?, ?, ?, ?)",
+                       [(did, alive, status, ts) for did, name, homepage, alive, status in results])
+        print(f"[link_health] 已写回 {len(results)} 条检查结果（{dead} 个失效）。")
 
 
 if __name__ == "__main__":
