@@ -501,6 +501,32 @@ def similar(dataset_id: str, k: int = 6):
     return {"dataset_id": dataset_id, "similar": out}
 
 
+import functools as _functools
+
+
+@_functools.lru_cache(maxsize=512)
+def _hf_repo_exists(repo: str) -> bool:
+    try:
+        from huggingface_hub import dataset_info
+        dataset_info(repo)        # 走 HF_ENDPOINT 镜像（服务器已配）
+        return True
+    except Exception:
+        return False
+
+
+@app.get("/api/oxe_hf/{dataset_id:path}")
+def oxe_hf_conversion(dataset_id: str):
+    """OXE 数据集 → HF LeRobot 转换版映射（可视化用）。核验存在后才返回 repo。"""
+    with _lock:
+        df = store.run_df(_con, "SELECT source FROM datasets WHERE dataset_id = ?", [dataset_id])
+    if df.empty or df.to_dict(orient="records")[0].get("source") != "openx":
+        return {"repo": None}
+    import oxe_registry as R
+    name = dataset_id.split("/")[-1]
+    guess = R.hf_conversion_guess(name)
+    return {"repo": guess if _hf_repo_exists(guess) else None, "guess": guess}
+
+
 @app.get("/api/benchmarks/{dataset_id:path}")
 def benchmarks_for(dataset_id: str):
     """评测出口链接（G4）：按本体 + 任务概念，推荐适用的公开评测基准并回链榜单页。"""

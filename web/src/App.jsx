@@ -77,6 +77,30 @@ function SpecsGrid({ ds }) {
   );
 }
 
+// OXE 数据集：找它的 HF LeRobot 转换版（社区 IPEC-COMMUNITY），用官方可视化打开。
+function OxeConversion({ id }) {
+  const [r, setR] = useState(null);
+  useEffect(() => { setR(null); api.oxeHf(id).then(setR).catch(() => setR({ repo: null })); }, [id]);
+  if (r == null) return (
+    <div className="flex items-center gap-2 text-slate-400 dark:text-zinc-500 text-sm py-6 justify-center">
+      <Loader2 size={15} className="animate-spin" /> 查找 HF LeRobot 转换版…</div>
+  );
+  if (!r.repo) return (
+    <div className="rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 p-5 text-sm text-slate-500 dark:text-zinc-400">
+      这是 OXE(RLDS)数据集,原始格式不便直接可视化;暂未找到它的 HF LeRobot 转换版。
+      {r.guess && <span className="block text-xs mt-1 font-mono text-slate-400 dark:text-zinc-600">尝试的仓库: {r.guess}(不存在)</span>}
+    </div>
+  );
+  return (
+    <div>
+      <div className="text-xs text-slate-500 dark:text-zinc-400 mb-2">
+        OXE 数据集 · 可视化来自社区 HF LeRobot 转换版 <code className="bg-slate-100 dark:bg-zinc-800 px-1 rounded">{r.repo}</code>
+      </div>
+      <OfficialViz repoId={r.repo} />
+    </div>
+  );
+}
+
 function Detail({ id, onClose, onOpen }) {
   const [d, setD] = useState(null);
   const [playEp, setPlayEp] = useState(null);
@@ -84,9 +108,10 @@ function Detail({ id, onClose, onOpen }) {
   useEffect(() => { setD(null); setPlayEp(null); setVizMode("official"); api.detail(id).then(setD); }, [id]);
   if (!d) return null;
   const ds = d.dataset || {};
-  const isHF = ds.source === "huggingface"
+  const isOxe = ds.source === "openx";
+  const isHF = !isOxe && (ds.source === "huggingface"
     || String(ds.source_format || "").includes("lerobot")
-    || String(ds.homepage || ds.source_uri || "").includes("huggingface.co");
+    || String(ds.homepage || ds.source_uri || "").includes("huggingface.co"));
   return (
     <div className="fixed inset-0 z-30 flex justify-end">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -130,7 +155,7 @@ function Detail({ id, onClose, onOpen }) {
             <div className="text-sm font-semibold text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
               <Film size={15} /> 可视化
               <span className="text-[11px] font-normal text-slate-400 dark:text-zinc-500 font-mono">
-                （{isHF ? "官方可视化" : "自研"} · {ds.source}/{ds.source_format}）
+                （{isOxe ? "HF转换版" : isHF ? "官方可视化" : "自研"} · {ds.source}/{ds.source_format}）
               </span>
             </div>
             {isHF && (
@@ -145,7 +170,9 @@ function Detail({ id, onClose, onOpen }) {
             )}
           </div>
 
-          {isHF && vizMode === "official" ? (
+          {isOxe ? (
+            <OxeConversion id={ds.dataset_id} />
+          ) : isHF && vizMode === "official" ? (
             <OfficialViz repoId={ds.dataset_id} totalEpisodes={ds.n_episodes} />
           ) : (
             <>

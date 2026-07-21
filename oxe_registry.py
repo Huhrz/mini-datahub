@@ -141,3 +141,18 @@ def provenance(name: str) -> str:
 
 def all_names():
     return list(OXE.keys())
+
+
+# ---------------- HF LeRobot 转换版映射（可视化用）----------------
+# 社区 IPEC-COMMUNITY 把整个 OXE 转成了 LeRobot 格式放在 HF（OpenX-LeRobot 合集），
+# 命名规律：IPEC-COMMUNITY/{name}_lerobot（少数例外）。有转换版就能复用 HF 可视化。
+_HF_CONV_OVERRIDE = {
+    "bridge_dataset": "IPEC-COMMUNITY/bridge_orig_lerobot",
+}
+
+
+def hf_conversion_guess(name: str) -> str:
+    """给 OXE 数据集名，猜它在 HF 上的 LeRobot 转换版 repo id（存在性由上层核验）。"""
+    if name in _HF_CONV_OVERRIDE:
+        return _HF_CONV_OVERRIDE[name]
+    return f"IPEC-COMMUNITY/{name}_lerobot"

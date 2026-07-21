@@ -50,6 +50,7 @@ export const api = {
   similar: (id) => get(`/similar/${id}`),
   gaps: () => get("/gaps"),
   benchmarks: (id) => get(`/benchmarks/${id}`),
+  oxeHf: (id) => get(`/oxe_hf/${id}`),
 
   // ---- 账户 ----
   register: (username, password) => send("/auth/register", "POST", { username, password }),
