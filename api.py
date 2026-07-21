@@ -16,7 +16,7 @@ import json
 import threading
 
 from fastapi import FastAPI, Query, Header, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import hub_data as hd
@@ -517,6 +517,45 @@ def benchmarks_for(dataset_id: str):
             concepts = []
     return {"dataset_id": dataset_id,
             "benchmarks": bm.match(row.get("embodiment", ""), concepts, dataset_id, row.get("source", ""))}
+
+
+# ==================== 缓存截图（快速按图浏览）====================
+def _dataset_video_url(dataset_id: str):
+    with _lock:
+        df = store.run_df(_con, "SELECT source, source_format FROM datasets WHERE dataset_id = ?", [dataset_id])
+    if df.empty:
+        return None
+    row = df.to_dict(orient="records")[0]
+    if _fmt_of(row) == "lerobot":
+        try:
+            import episode
+            info = episode._info(dataset_id)
+            return episode._first_video_url(dataset_id, info)
+        except Exception:
+            return None
+    return None
+
+
+@app.get("/api/thumbs/{dataset_id:path}")
+def thumbs_list(dataset_id: str, make: int = 0):
+    """返回该数据集已缓存的截图 URL 列表。make=1 时若无缓存则现抽（详情页用，画廊用 0 只读缓存）。"""
+    import thumbs
+    if make and not thumbs.has_cache(dataset_id):
+        url = _dataset_video_url(dataset_id)
+        if url:
+            thumbs.extract(dataset_id, url)
+    files = thumbs.cached_files(dataset_id)
+    return {"count": len(files), "urls": [f"/api/thumb/{dataset_id}?i={i}" for i in range(len(files))]}
+
+
+@app.get("/api/thumb/{dataset_id:path}")
+def thumb_img(dataset_id: str, i: int = 0):
+    """回传第 i 张缓存截图（本地 JPEG，秒开）。"""
+    import thumbs
+    files = thumbs.cached_files(dataset_id)
+    if not files or i < 0 or i >= len(files):
+        return JSONResponse({"error": "no thumb"}, status_code=404)
+    return FileResponse(files[i], media_type="image/jpeg")
 
 
 # ==================== 账户 + 收藏集（MVP demo）====================

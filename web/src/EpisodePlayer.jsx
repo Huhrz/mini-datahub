@@ -257,12 +257,16 @@ export function SampleStrip({ datasetId, onPick, activeEp }) {
   );
 }
 
-// 卡片缩略图：懒加载预览视频（首帧即缩略图，悬停播放）。拿不到则占位。
+// 卡片缩略图：优先用服务器缓存的本地截图(秒开、悬停轮播多帧)；无缓存回退到
+// HF 视频预览；再拿不到则占位图标。
 export function Thumbnail({ datasetId, embodiment }) {
-  const [state, setState] = useState("loading"); // loading|ok|none
-  const [url, setUrl] = useState(null);
+  const [state, setState] = useState("loading"); // loading|img|video|none
+  const [imgs, setImgs] = useState([]);          // 缓存截图 URL 列表
+  const [idx, setIdx] = useState(0);
+  const [vurl, setVurl] = useState(null);
   const ref = useRef(null);
   const vref = useRef(null);
+  const timer = useRef(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -271,8 +275,15 @@ export function Thumbnail({ datasetId, embodiment }) {
     const io = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting && !done) {
         done = true; io.disconnect();
-        api.preview(datasetId)
-          .then((r) => { r?.video ? (setUrl(r.video), setState("ok")) : setState("none"); })
+        // 先看有没有本地缓存截图
+        api.thumbs(datasetId)
+          .then((r) => {
+            if (r?.urls?.length) { setImgs(r.urls); setState("img"); return; }
+            // 回退到 HF 视频预览
+            return api.preview(datasetId).then((p) => {
+              p?.video ? (setVurl(p.video), setState("video")) : setState("none");
+            });
+          })
           .catch(() => setState("none"));
       }
     }, { rootMargin: "200px" });
@@ -280,15 +291,31 @@ export function Thumbnail({ datasetId, embodiment }) {
     return () => io.disconnect();
   }, [datasetId]);
 
+  const startCycle = () => {
+    if (imgs.length < 2) return;
+    clearInterval(timer.current);
+    timer.current = setInterval(() => setIdx((i) => (i + 1) % imgs.length), 700);
+  };
+  const stopCycle = () => { clearInterval(timer.current); setIdx(0); };
+  useEffect(() => () => clearInterval(timer.current), []);
+
   return (
     <div ref={ref}
-      onMouseEnter={() => vref.current && vref.current.play().catch(() => {})}
-      onMouseLeave={() => vref.current && vref.current.pause()}
+      onMouseEnter={() => { if (state === "img") startCycle(); if (vref.current) vref.current.play().catch(() => {}); }}
+      onMouseLeave={() => { if (state === "img") stopCycle(); if (vref.current) vref.current.pause(); }}
       className="relative w-full aspect-video rounded-lg overflow-hidden bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-800">
-      {state === "ok" && url ? (
-        <video ref={vref} src={url} muted loop playsInline preload="metadata"
-          onError={() => setState("none")}
-          className="w-full h-full object-cover" />
+      {state === "img" ? (
+        <>
+          <img src={imgs[idx]} alt="" className="w-full h-full object-cover" onError={() => setState("none")} />
+          {imgs.length > 1 && (
+            <div className="absolute bottom-1 right-1 flex gap-0.5">
+              {imgs.map((_, i) => <span key={i} className={`w-1 h-1 rounded-full ${i === idx ? "bg-white" : "bg-white/40"}`} />)}
+            </div>
+          )}
+        </>
+      ) : state === "video" && vurl ? (
+        <video ref={vref} src={vurl} muted loop playsInline preload="metadata"
+          onError={() => setState("none")} className="w-full h-full object-cover" />
       ) : state === "loading" ? (
         <div className="w-full h-full flex items-center justify-center">
           <Loader2 size={16} className="animate-spin text-slate-300 dark:text-zinc-600" />

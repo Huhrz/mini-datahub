@@ -43,6 +43,7 @@ export const api = {
   search: (q, page, page_size) => get("/search", { q, page, page_size }),
   exportManifest: (ids) => get("/export", { ids: ids.join(",") }),
   preview: (id) => get(`/preview/${id}`),
+  thumbs: (id, make = 0) => get(`/thumbs/${id}`, make ? { make } : undefined),
   samples: (id) => get(`/samples/${id}`),
   episode: (id, ep = 0) => get(`/episode/${id}`, { ep }),
   croissantUrl: (id) => `${BASE}/croissant/${id}`,
