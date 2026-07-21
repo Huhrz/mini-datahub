@@ -15,12 +15,14 @@ import os
 import json
 import threading
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Header, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import hub_data as hd
 import taxonomy as tx
 import store
+import accounts
 
 app = FastAPI(title="RoboticDataHub API", version="0.1.0")
 
@@ -46,6 +48,28 @@ def _open_catalog():
 
 _con = _open_catalog()
 _lock = threading.Lock()
+
+# 账户功能所需的表（用户/会话/收藏集）。Postgres 下可写；DuckDB 只读时会跳过。
+try:
+    with _lock:
+        accounts.ensure_tables(_con)
+except Exception as e:
+    print(f"[accounts] 建表跳过（DuckDB 只读或其它）：{repr(e)[:80]}")
+
+
+def _bearer(authorization: str) -> str:
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return (authorization or "").strip()
+
+
+def current_user(authorization: str = Header(default="")):
+    """从 Authorization: Bearer <token> 解析登录用户；未登录返回 None。"""
+    token = _bearer(authorization)
+    if not token:
+        return None
+    with _lock:
+        return accounts.user_for_token(_con, token)
 
 _JSON_COLS = ["action_convention", "tasks", "scenes", "modalities",
               "linked_benchmarks", "quality_report"]
@@ -493,6 +517,82 @@ def benchmarks_for(dataset_id: str):
             concepts = []
     return {"dataset_id": dataset_id,
             "benchmarks": bm.match(row.get("embodiment", ""), concepts, dataset_id, row.get("source", ""))}
+
+
+# ==================== 账户 + 收藏集（MVP demo）====================
+@app.post("/api/auth/register")
+def auth_register(body: dict):
+    with _lock:
+        u, err = accounts.register(_con, body.get("username"), body.get("password"))
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        token, _ = accounts.login(_con, body.get("username"), body.get("password"))
+    return {"username": u, "token": token}
+
+
+@app.post("/api/auth/login")
+def auth_login(body: dict):
+    with _lock:
+        token, err = accounts.login(_con, body.get("username"), body.get("password"))
+    if err:
+        return JSONResponse({"error": err}, status_code=401)
+    return {"username": body.get("username"), "token": token}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(authorization: str = Header(default="")):
+    with _lock:
+        accounts.logout(_con, _bearer(authorization))
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def auth_me(user=Depends(current_user)):
+    return {"username": user}
+
+
+@app.get("/api/collections")
+def collections_list(user=Depends(current_user)):
+    if not user:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    with _lock:
+        return {"collections": accounts.list_collections(_con, user)}
+
+
+@app.post("/api/collections")
+def collections_create(body: dict, user=Depends(current_user)):
+    if not user:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    with _lock:
+        cid = accounts.create_collection(_con, user, body.get("name"), body.get("ids") or [])
+    return {"id": cid}
+
+
+@app.get("/api/collections/{cid}")
+def collections_get(cid: str, user=Depends(current_user)):
+    if not user:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    with _lock:
+        ids = accounts.collection_ids(_con, cid, user)
+        if ids is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        rows = []
+        if ids:
+            ph = ",".join(["?"] * len(ids))
+            df = store.run_df(_con,
+                f"SELECT dataset_id, name, embodiment, source_format, n_episodes, "
+                f"quality_score, commercial_ok FROM datasets WHERE dataset_id IN ({ph})", ids)
+            rows = df.to_dict(orient="records")
+    return {"id": cid, "ids": ids, "datasets": rows}
+
+
+@app.delete("/api/collections/{cid}")
+def collections_delete(cid: str, user=Depends(current_user)):
+    if not user:
+        return JSONResponse({"error": "未登录"}, status_code=401)
+    with _lock:
+        ok = accounts.delete_collection(_con, cid, user)
+    return {"ok": ok}
 
 
 @app.get("/api/search")

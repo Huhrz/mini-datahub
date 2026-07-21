@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { api } from "./api.js";
+import { api, setToken, getToken } from "./api.js";
 import CoverageHeatmap from "./CoverageHeatmap.jsx";
 import EpisodePlayer, { Thumbnail, SampleStrip, OfficialViz } from "./EpisodePlayer.jsx";
 import {
   Search, SlidersHorizontal, ExternalLink, AlertTriangle,
   Sun, Moon, Check, Film, LayoutGrid, List, ChevronLeft, ChevronRight,
-  ShoppingCart, Download, X, Loader2, WifiOff, Braces,
+  ShoppingCart, Download, X, Loader2, WifiOff, Braces, User, LogOut, FolderHeart, Save, Trash2,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
@@ -392,6 +392,85 @@ function DatasetCard({ d, onOpen, inCart, onToggleCart, query, gallery }) {
   );
 }
 
+function AuthModal({ onClose, onAuthed }) {
+  const [mode, setMode] = useState("login");
+  const [u, setU] = useState("");
+  const [p, setP] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const r = mode === "login" ? await api.login(u, p) : await api.register(u, p);
+      setToken(r.token);
+      onAuthed(r.username);
+      onClose();
+    } catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-6 shadow-2xl">
+        <button onClick={onClose} className="absolute top-3 right-4 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 text-xl">×</button>
+        <div className="flex gap-2 mb-4">
+          {[["login", "登录"], ["register", "注册"]].map(([k, label]) => (
+            <button key={k} onClick={() => { setMode(k); setErr(""); }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${mode === k ? "bg-cyan-600 text-white" : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <input placeholder="用户名" value={u} onChange={(e) => setU(e.target.value)}
+          className="w-full mb-2 border border-slate-300 dark:border-zinc-700 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 rounded-lg px-3 py-2 text-sm" />
+        <input type="password" placeholder="密码（至少 6 位）" value={p} onChange={(e) => setP(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          className="w-full mb-3 border border-slate-300 dark:border-zinc-700 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 rounded-lg px-3 py-2 text-sm" />
+        {err && <div className="text-rose-500 text-xs mb-2">{err}</div>}
+        <button onClick={submit} disabled={busy}
+          className="w-full bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
+          {busy ? "…" : mode === "login" ? "登录" : "注册并登录"}
+        </button>
+        <div className="text-[11px] text-slate-400 dark:text-zinc-500 mt-3">
+          demo 账户：登录后可把训练集保存为收藏集，随时取回。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollectionsPanel({ onClose, onLoad }) {
+  const [cols, setCols] = useState(null);
+  const load = () => api.listCollections().then((r) => setCols(r.collections || [])).catch(() => setCols([]));
+  useEffect(() => { load(); }, []);
+  const del = async (cid) => { await api.deleteCollection(cid); load(); };
+  const open = async (cid) => { const r = await api.getCollection(cid); onLoad(r.ids || []); onClose(); };
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white dark:bg-zinc-900 h-full overflow-y-auto p-6 shadow-2xl">
+        <button onClick={onClose} className="absolute top-4 right-5 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 text-2xl">×</button>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-zinc-100 mb-1 flex items-center gap-1.5"><FolderHeart size={18} /> 我的收藏集</h2>
+        <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">保存的数据集合，点开可载回训练集。</p>
+        {cols == null ? <div className="text-slate-400 text-sm py-8 text-center">加载中…</div>
+          : cols.length === 0 ? <div className="text-slate-400 dark:text-zinc-500 text-sm py-8 text-center">还没有收藏集。把训练集里的数据集"保存为收藏集"吧。</div>
+            : (
+              <div className="space-y-2">
+                {cols.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-zinc-800">
+                    <button onClick={() => open(c.id)} className="min-w-0 text-left flex-1">
+                      <div className="font-medium text-slate-800 dark:text-zinc-100 truncate">{c.name}</div>
+                      <div className="text-xs text-slate-400 dark:text-zinc-500">{c.count} 个数据集 · {c.created_at}</div>
+                    </button>
+                    <button onClick={() => del(c.id)} title="删除" className="p-1.5 text-slate-400 hover:text-rose-500"><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [stats, setStats] = useState(null);
   const [facets, setFacets] = useState({ embodiments: [], formats: [], provenances: [], concepts: [] });
@@ -409,12 +488,25 @@ export default function App() {
   const [cart, setCart] = useState(() => new Set());
   const [view, setView] = useState(() => localStorage.getItem("mdh-view") || "gallery");
   const [dark, setDark] = useState(() => localStorage.getItem("mdh-theme") === "dark");
+  const [user, setUser] = useState(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [colsOpen, setColsOpen] = useState(false);
 
   useEffect(() => {
     api.stats().then(setStats).catch(() => {});
     api.facets().then(setFacets).catch(() => {});
     api.datasets({ page: 1, page_size: 500 }).then((r) => setAllDs(r.datasets || [])).catch(() => {});
+    if (getToken()) api.me().then((r) => setUser(r.username)).catch(() => setToken(""));
   }, []);
+
+  const logout = async () => { try { await api.logout(); } catch {} setToken(""); setUser(null); };
+  const saveCart = async () => {
+    if (!user) { setAuthOpen(true); return; }
+    const name = window.prompt("给这个收藏集起个名字：", "我的训练集");
+    if (name == null) return;
+    try { await api.createCollection(name, [...cart]); window.alert("已保存到收藏集。"); }
+    catch (e) { window.alert("保存失败：" + e.message); }
+  };
 
   useEffect(() => {
     let cancel = false;
@@ -475,10 +567,27 @@ export default function App() {
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-zinc-50">🤖 机器人 <span className="text-cyan-600 dark:text-cyan-400">DataHub</span></h1>
             <p className="text-slate-500 dark:text-zinc-400 mt-1 text-xs sm:text-sm">跨源聚合 · 语义检索 · 自动质检 · 覆盖度地图 · 跨源回放</p>
           </div>
-          <button onClick={() => setDark((v) => !v)}
-            className="shrink-0 flex items-center gap-1.5 border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-zinc-300 hover:border-cyan-500">
-            {dark ? <Sun size={14} /> : <Moon size={14} />}{dark ? "浅色" : "深色"}
-          </button>
+          <div className="shrink-0 flex items-center gap-2">
+            {user ? (
+              <>
+                <button onClick={() => setColsOpen(true)}
+                  className="flex items-center gap-1.5 border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-zinc-300 hover:border-cyan-500">
+                  <FolderHeart size={14} /> 收藏集
+                </button>
+                <span className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-zinc-300"><User size={14} /> {user}</span>
+                <button onClick={logout} title="登出" className="text-slate-400 hover:text-rose-500 p-1"><LogOut size={14} /></button>
+              </>
+            ) : (
+              <button onClick={() => setAuthOpen(true)}
+                className="flex items-center gap-1.5 border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-zinc-300 hover:border-cyan-500">
+                <User size={14} /> 登录 / 注册
+              </button>
+            )}
+            <button onClick={() => setDark((v) => !v)}
+              className="flex items-center gap-1.5 border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-zinc-300 hover:border-cyan-500">
+              {dark ? <Sun size={14} /> : <Moon size={14} />}{dark ? "浅色" : "深色"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -591,6 +700,10 @@ export default function App() {
       {cart.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 bg-zinc-900 text-white rounded-full shadow-2xl px-5 py-3 flex items-center gap-4">
           <span className="flex items-center gap-1.5 text-sm"><ShoppingCart size={16} /> 训练集：{cart.size} 个数据集</span>
+          <button onClick={saveCart} title="保存为收藏集（需登录）"
+            className="inline-flex items-center gap-1.5 border border-zinc-600 hover:border-cyan-400 text-zinc-100 text-sm font-semibold px-3 py-1.5 rounded-full">
+            <Save size={14} /> 保存为收藏集
+          </button>
           <button onClick={exportCart} className="inline-flex items-center gap-1.5 bg-cyan-500 hover:bg-cyan-400 text-white text-sm font-semibold px-3 py-1.5 rounded-full">
             <Download size={14} /> 导出训练清单
           </button>
@@ -598,6 +711,8 @@ export default function App() {
         </div>
       )}
 
+      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onAuthed={setUser} />}
+      {colsOpen && <CollectionsPanel onClose={() => setColsOpen(false)} onLoad={(ids) => setCart(new Set(ids))} />}
       {selected && <Detail id={selected} onClose={() => setSelected(null)} onOpen={setSelected} />}
     </div>
   );
