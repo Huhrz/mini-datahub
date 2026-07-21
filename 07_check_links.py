@@ -12,15 +12,28 @@
     python 07_check_links.py
 """
 
+import os
 import hub_data as hd
 
 UA = {"User-Agent": "mini-datahub-linkcheck/1.0"}
+
+# 若配了 HF 镜像（如国内服务器 HF_ENDPOINT=https://hf-mirror.com），
+# 体检 HF 链接时改走镜像域名，避免"连不上 huggingface.co"造成的误报。
+_HF_MIRROR = os.environ.get("HF_ENDPOINT", "").strip().rstrip("/")
+
+
+def _apply_mirror(url: str) -> str:
+    if _HF_MIRROR and url and "huggingface.co" in url:
+        host = _HF_MIRROR.split("://", 1)[-1]      # hf-mirror.com
+        return url.replace("huggingface.co", host)
+    return url
 
 
 def check_url(url, timeout=8):
     """返回 (alive: bool, status: 状态码或错误简述)。"""
     if not url:
         return False, "无链接"
+    url = _apply_mirror(url)
     try:
         import requests
     except ImportError:

@@ -36,9 +36,11 @@ def _pg(sql: str) -> str:
 
 
 def ddl(sql: str) -> str:
-    """DuckDB DDL -> Postgres：DOUBLE 需写成 DOUBLE PRECISION。"""
+    """DuckDB DDL -> Postgres：DOUBLE 需写成 DOUBLE PRECISION。
+    用单次 replace —— Python 的 str.replace 从左到右不回扫替换文本，
+    所以每个 DOUBLE 只会变成一个 DOUBLE PRECISION，不会出现 PRECISION PRECISION。"""
     if is_pg():
-        return sql.replace(" DOUBLE\n", " DOUBLE PRECISION\n").replace(" DOUBLE,", " DOUBLE PRECISION,").replace(" DOUBLE ", " DOUBLE PRECISION ")
+        return sql.replace("DOUBLE", "DOUBLE PRECISION")
     return sql
 
 
