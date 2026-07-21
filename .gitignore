@@ -39,3 +39,6 @@ viz_previews.json
 reports/
 croissant/
 hf_cache/
+
+# 大模型 key 等本地密钥
+.env

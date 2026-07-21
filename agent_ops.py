@@ -89,29 +89,35 @@ def _facts_text(state, new_ids, ts):
     return "\n".join(lines)
 
 
+_SYS_PROMPT = ("你是机器人数据 hub 的运维助手。根据给定的目录状态事实，用中文写一份简洁的"
+               "运维摘要：①本轮变化 ②需要注意的异常（失效链接/非商用/数据缺口）③3 条以内"
+               "建议行动。只依据给定事实，不编造数字。")
+
+
 def llm_digest(facts_text):
-    """配了 key 才调 LLM；否则返回 None。"""
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
+    """OpenAI 兼容接口（通义千问/DeepSeek/OpenAI 等都适用）。没配 key/base 就返回 None。
+    环境变量：MDH_LLM_BASE_URL / MDH_LLM_API_KEY / MDH_LLM_MODEL。"""
+    key = os.environ.get("MDH_LLM_API_KEY")
+    base = os.environ.get("MDH_LLM_BASE_URL", "").strip().rstrip("/")
+    model = os.environ.get("MDH_LLM_MODEL", "qwen-plus")
+    if not (key and base):
         return None
-    base = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
     try:
         import requests
         r = requests.post(
-            f"{base}/v1/messages", timeout=60,
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            f"{base}/chat/completions", timeout=60,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={
                 "model": model, "max_tokens": 1024,
-                "system": ("你是机器人数据 hub 的运维助手。根据给定的目录状态事实，用中文写一份简洁的"
-                           "运维摘要：①本轮变化 ②需要注意的异常（失效链接/非商用/数据缺口）③3 条以内"
-                           "建议行动。只依据给定事实，不编造数字。"),
-                "messages": [{"role": "user", "content": facts_text}],
+                "messages": [
+                    {"role": "system", "content": _SYS_PROMPT},
+                    {"role": "user", "content": facts_text},
+                ],
             })
         r.raise_for_status()
-        return "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+        return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        print(f"[llm] 调用失败，退回模板摘要：{repr(e)[:100]}")
+        print(f"[llm] 调用失败，退回模板摘要：{repr(e)[:120]}")
         return None
 
 
@@ -131,10 +137,7 @@ def template_digest(state, new_ids):
     return "\n".join(lines)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--no-ingest", action="store_true", help="跳过接入，只体检+出摘要")
-    args = ap.parse_args()
+def run_once(args):
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
 
     # 1) 接入前快照
@@ -171,6 +174,24 @@ def main():
     print(digest)
     print("=" * 60)
     print(f"[ok] 报告已存：{path}")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--no-ingest", action="store_true", help="跳过接入，只体检+出摘要")
+    ap.add_argument("--loop", action="store_true", help="常驻：每 MDH_SCHEDULE_HOURS 小时跑一轮")
+    args = ap.parse_args()
+    if args.loop:
+        hours = float(os.environ.get("MDH_SCHEDULE_HOURS", "24"))
+        print(f"[agent] 常驻运维 agent 启动，每 {hours} 小时跑一轮。")
+        while True:
+            try:
+                run_once(args)
+            except Exception as e:
+                print(f"[agent] 本轮出错（继续）：{repr(e)[:150]}")
+            time.sleep(hours * 3600)
+    else:
+        run_once(args)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,18 @@
+# 后台运维 AI Agent（override，叠加在 docker-compose.prod.yml 上）
+# 把常驻的 scheduler 服务换成"运维 agent"：定时刷新数据 + 读状态 + 大模型写运维摘要。
+#
+# 用法：
+#   docker compose -f docker-compose.prod.yml -f docker-compose.agent.yml up -d --build scheduler
+#
+# 大模型 key 放在同目录的 .env 里（不进版本库），OpenAI 兼容接口，国内推荐通义千问/DeepSeek。
+# 没配 key 也能跑——降级为"确定性 + 模板摘要"（不调大模型）。
+services:
+  scheduler:
+    command: ["python", "agent_ops.py", "--loop"]
+    environment:
+      - MDH_LLM_BASE_URL=${MDH_LLM_BASE_URL:-}
+      - MDH_LLM_API_KEY=${MDH_LLM_API_KEY:-}
+      - MDH_LLM_MODEL=${MDH_LLM_MODEL:-qwen-plus}
+      - MDH_REPORT_DIR=/data/reports
+    volumes:
+      - /data/reports:/data/reports        # 运维摘要报告持久化到数据盘
