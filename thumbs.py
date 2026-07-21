@@ -30,6 +30,19 @@ def _mirror(url: str) -> str:
     return url
 
 
+def _ffmpeg_bin():
+    """优先用系统 ffmpeg（稳）；没有再退回 imageio 自带的静态 ffmpeg。"""
+    import shutil
+    b = shutil.which("ffmpeg")
+    if b:
+        return b
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
 def _key(dataset_id: str) -> str:
     return hashlib.md5(dataset_id.encode()).hexdigest()[:16]
 
@@ -53,10 +66,8 @@ def extract(dataset_id: str, video_url: str, seconds: int = 4, width: int = 360)
     一次 ffmpeg 调用、只读开头几秒（HTTP range），高效；失败静默返回 0。"""
     if not video_url:
         return 0
-    try:
-        import imageio_ffmpeg
-        ff = imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
+    ff = _ffmpeg_bin()
+    if not ff:
         return 0
     url = _mirror(video_url)
     d = dir_for(dataset_id)
