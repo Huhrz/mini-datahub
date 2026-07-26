@@ -584,6 +584,57 @@ def thumb_img(dataset_id: str, i: int = 0):
     return FileResponse(files[i], media_type="image/jpeg")
 
 
+# ==================== 问卷收集与自动统计 ====================
+import survey as _survey
+
+try:
+    with _lock:
+        _survey.ensure_tables(_con)
+except Exception as e:
+    print(f"[survey] 建表跳过：{repr(e)[:80]}")
+
+_ADMINS = [u.strip() for u in os.environ.get("MDH_ADMIN_USERS", "").split(",") if u.strip()]
+
+
+def _can_view_survey(user):
+    """未配置 MDH_ADMIN_USERS 时，任何已登录用户可看；配置了则仅限名单内。"""
+    if not user:
+        return False
+    return (not _ADMINS) or (user in _ADMINS)
+
+
+@app.post("/api/survey/submit")
+def survey_submit(body: dict):
+    """问卷提交（公开，无需登录）。"""
+    answers = body.get("answers") or body
+    if not isinstance(answers, dict) or not answers:
+        return JSONResponse({"error": "empty"}, status_code=400)
+    try:
+        with _lock:
+            rid = _survey.submit(_con, answers)
+        return {"ok": True, "id": rid}
+    except Exception as e:
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=500)
+
+
+@app.get("/api/survey/summary")
+def survey_summary(user=Depends(current_user)):
+    """自动聚合统计（需登录）。"""
+    if not _can_view_survey(user):
+        return JSONResponse({"error": "需要登录后查看"}, status_code=401)
+    with _lock:
+        return _survey.summarize(_con)
+
+
+@app.get("/api/survey/export")
+def survey_export(user=Depends(current_user)):
+    """导出全部原始回答（需登录）。"""
+    if not _can_view_survey(user):
+        return JSONResponse({"error": "需要登录后查看"}, status_code=401)
+    with _lock:
+        return {"rows": _survey.export_rows(_con)}
+
+
 # ==================== 账户 + 收藏集（MVP demo）====================
 @app.post("/api/auth/register")
 def auth_register(body: dict):

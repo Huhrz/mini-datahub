@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>问卷结果统计 · 机器人 DataHub</title>
+<style>
+  :root{--bg:#f6f8fa;--card:#fff;--line:#e3e8ef;--text:#1e293b;--muted:#64748b;--accent:#0891b2}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);line-height:1.6;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 16px 60px}
+  header{background:linear-gradient(135deg,#0e7490,#0891b2);color:#fff;padding:26px 0}
+  h1{margin:0;font-size:21px}
+  .sub{opacity:.9;font-size:13.5px;margin:4px 0 0}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:16px 0}
+  h2{font-size:16px;margin:0 0 4px;color:#0e7490}
+  .note{font-size:13px;color:var(--muted);margin:0 0 14px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .kpi .l{font-size:12.5px;color:var(--muted)}
+  .kpi .v{font-size:24px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:9px 8px;border-bottom:1px solid #f1f5f9;text-align:left}
+  th{font-size:12.5px;color:var(--muted);background:#fafbfc;font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600}
+  .t-red{background:#fee2e2;color:#b91c1c}.t-amber{background:#fef3c7;color:#b45309}
+  .t-gray{background:#f1f5f9;color:#64748b}.t-blue{background:#cffafe;color:#0e7490}
+  .bar{height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;min-width:70px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .bar i.red{background:#ef4444}
+  button{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 16px;
+    font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  button.ghost{background:#fff;color:var(--text);border:1px solid var(--line)}
+  input{border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit}
+  .login{max-width:340px;margin:60px auto;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:24px}
+  .login input{width:100%;margin-bottom:9px}
+  .err{color:#dc2626;font-size:13px;margin-top:6px}
+  .fb{border-left:3px solid var(--accent);padding:8px 0 8px 12px;margin-bottom:12px}
+  .fb .meta{font-size:12px;color:var(--muted);margin-bottom:2px}
+  .empty{color:var(--muted);font-size:14px;padding:20px 0;text-align:center}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  @media(max-width:600px){.hide-sm{display:none}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>📊 问卷结果统计</h1>
+  <p class="sub">自动聚合用户反馈 → 直接产出开发优先级</p>
+</div></header>
+
+<div id="login" class="login">
+  <div style="font-weight:600;margin-bottom:12px">请登录查看统计</div>
+  <input id="u" placeholder="用户名">
+  <input id="p" type="password" placeholder="密码" onkeydown="if(event.key==='Enter')doLogin()">
+  <button onclick="doLogin()" style="width:100%">登录</button>
+  <div class="err" id="loginErr"></div>
+  <div style="font-size:12.5px;color:#64748b;margin-top:10px">使用你在 DataHub 注册的账号。</div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <div class="kpis" id="kpis"></div>
+
+  <section>
+    <h2>① 功能优先级（重要性 − 满意度）</h2>
+    <p class="note">gap 越大越该优先改进。≥1.5 为重点改进区，&lt;−0.5 说明投入过度。</p>
+    <div id="gap"></div>
+  </section>
+
+  <section>
+    <h2>② 任务完成率</h2>
+    <p class="note">失败率 &gt; 30% 属于<b>阻断级问题</b>，优先级高于任何新功能。</p>
+    <div id="tasks"></div>
+  </section>
+
+  <section>
+    <h2>③ 候选功能排序</h2>
+    <p class="note">按价值均值排序；Top3 得票为加权投票（第1名3分、第2名2分、第3名1分）。</p>
+    <div id="feats"></div>
+  </section>
+
+  <section>
+    <h2>④ 元数据字段需求</h2>
+    <p class="note">用户判断"数据能不能用"时最看重的字段 —— 指导该补哪些元数据。</p>
+    <div id="fields"></div>
+  </section>
+
+  <section>
+    <h2>⑤ 开放反馈</h2>
+    <p class="note">原始文字反馈，可直接归入 feature 列表。</p>
+    <div id="open"></div>
+  </section>
+
+  <section>
+    <h2>⑥ 选项分布</h2>
+    <p class="note">各单/多选题的作答分布。</p>
+    <div id="dist"></div>
+  </section>
+
+  <div class="toolbar">
+    <button onclick="load()">🔄 刷新</button>
+    <button class="ghost" onclick="exportCSV()">⬇️ 导出原始数据 CSV</button>
+    <button class="ghost" onclick="logout()">退出登录</button>
+  </div>
+</div>
+
+<script>
+const API = location.protocol === "file:" ? "http://47.116.26.211:8080/api" : "/api";
+let token = localStorage.getItem("mdh-token") || "";
+const H = () => token ? {Authorization: "Bearer " + token} : {};
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function doLogin(){
+  const u = document.getElementById("u").value.trim();
+  const p = document.getElementById("p").value;
+  try{
+    const r = await fetch(API+"/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({username:u,password:p})});
+    const d = await r.json();
+    if(!r.ok||d.error) throw new Error(d.error||"登录失败");
+    token = d.token; localStorage.setItem("mdh-token", token);
+    document.getElementById("loginErr").textContent = "";
+    load();
+  }catch(e){ document.getElementById("loginErr").textContent = e.message; }
+}
+function logout(){ token=""; localStorage.removeItem("mdh-token");
+  document.getElementById("app").style.display="none";
+  document.getElementById("login").style.display="block"; }
+
+function bar(v, max, red){
+  const w = max ? Math.round(100*v/max) : 0;
+  return `<div class="bar"><i class="${red?'red':''}" style="width:${w}%"></i></div>`;
+}
+function lvlTag(l){
+  const m = {"重点改进":"t-red","待改进":"t-amber","基本匹配":"t-gray","过度投入":"t-blue"};
+  return `<span class="tag ${m[l]||'t-gray'}">${esc(l)}</span>`;
+}
+
+async function load(){
+  let d;
+  try{
+    const r = await fetch(API+"/survey/summary",{headers:H()});
+    d = await r.json();
+    if(!r.ok||d.error) throw new Error(d.error||"读取失败");
+  }catch(e){
+    document.getElementById("loginErr").textContent = e.message;
+    document.getElementById("app").style.display="none";
+    document.getElementById("login").style.display="block";
+    return;
+  }
+  document.getElementById("login").style.display="none";
+  document.getElementById("app").style.display="block";
+
+  // KPI
+  const nps = d.nps ? d.nps.score : "—";
+  const blocking = (d.task_completion||[]).filter(t=>t.blocking).length;
+  const top = (d.gap_ranking||[])[0];
+  document.getElementById("kpis").innerHTML = `
+    <div class="kpi"><div class="l">回收问卷</div><div class="v">${d.n}</div></div>
+    <div class="kpi"><div class="l">NPS 推荐值</div><div class="v">${nps}</div></div>
+    <div class="kpi"><div class="l">阻断级问题</div><div class="v" style="color:${blocking?'#dc2626':'inherit'}">${blocking}</div></div>
+    <div class="kpi"><div class="l">最该改进</div><div class="v" style="font-size:16px">${top?esc(top.label):"—"}</div></div>`;
+
+  if(d.n === 0){
+    document.querySelectorAll("section > div").forEach(el=>el.innerHTML='<div class="empty">还没有收到问卷。把 survey.html 链接发给用户即可开始收集。</div>');
+    return;
+  }
+
+  // ① gap
+  document.getElementById("gap").innerHTML = `<table><thead><tr>
+    <th>功能</th><th class="n">重要性</th><th class="n">满意度</th><th class="n">gap</th><th>判定</th><th class="n hide-sm">样本</th></tr></thead><tbody>` +
+    (d.gap_ranking||[]).map(x=>`<tr><td><b style="color:#0891b2">${x.id}</b> ${esc(x.label)}</td>
+      <td class="n">${x.importance??"—"}</td><td class="n">${x.satisfaction??"—"}</td>
+      <td class="n"><b>${x.gap??"—"}</b></td><td>${lvlTag(x.level)}</td>
+      <td class="n hide-sm">${x.n}</td></tr>`).join("") + `</tbody></table>`;
+
+  // ② tasks
+  document.getElementById("tasks").innerHTML = `<table><thead><tr>
+    <th>任务</th><th class="n">成功率</th><th class="n">失败率</th><th>状态</th></tr></thead><tbody>` +
+    (d.task_completion||[]).map(t=>`<tr><td>${esc(t.label)}</td>
+      <td class="n">${t.success_rate}%</td><td class="n">${t.fail_rate}%</td>
+      <td>${t.blocking?'<span class="tag t-red">⚠️ 阻断级</span>':'<span class="tag t-gray">正常</span>'}</td></tr>`).join("")
+    + `</tbody></table>`;
+
+  // ③ features
+  const maxF = Math.max(...(d.feature_ranking||[]).map(f=>f.mean||0), 1);
+  document.getElementById("feats").innerHTML = `<table><thead><tr>
+    <th>候选功能</th><th class="n">价值均值</th><th class="hide-sm">分布</th><th class="n">Top3 得票</th></tr></thead><tbody>` +
+    (d.feature_ranking||[]).map(f=>`<tr><td><b style="color:#0891b2">${f.id}</b> ${esc(f.label)}</td>
+      <td class="n">${f.mean||"—"}</td><td class="hide-sm">${bar(f.mean||0,maxF)}</td>
+      <td class="n">${f.top3_score||0}</td></tr>`).join("") + `</tbody></table>`;
+
+  // ④ fields
+  document.getElementById("fields").innerHTML = `<table><thead><tr>
+    <th>字段</th><th class="n">重要性</th><th class="hide-sm">分布</th></tr></thead><tbody>` +
+    (d.field_needs||[]).map(f=>`<tr><td><b style="color:#0891b2">${f.id}</b> ${esc(f.label)}</td>
+      <td class="n">${f.mean}</td><td class="hide-sm">${bar(f.mean,5)}</td></tr>`).join("") + `</tbody></table>`;
+
+  // ⑤ open feedback
+  const fb = d.open_feedback||[];
+  document.getElementById("open").innerHTML = fb.length ? fb.map(f=>
+    `<div class="fb"><div class="meta">${esc(f.who)}${f.role?" · "+esc(f.role):""} · ${esc(f.label)} · ${esc(f.at)}</div>
+     <div>${esc(f.text)}</div></div>`).join("") : '<div class="empty">暂无文字反馈</div>';
+
+  // ⑥ distributions
+  const dist = d.distributions||{};
+  const keys = Object.keys(dist).sort();
+  document.getElementById("dist").innerHTML = keys.length ? keys.map(k=>{
+    const items = Object.entries(dist[k]).sort((a,b)=>b[1]-a[1]);
+    const mx = Math.max(...items.map(i=>i[1]),1);
+    return `<div style="margin-bottom:14px"><div style="font-weight:600;font-size:14px;color:#0891b2">${esc(k)}</div>` +
+      items.map(([v,c])=>`<div style="display:flex;align-items:center;gap:8px;font-size:13.5px;padding:2px 0">
+        <span style="flex:1">${esc(v)}</span>${bar(c,mx)}<span class="n" style="width:28px">${c}</span></div>`).join("") + `</div>`;
+  }).join("") : '<div class="empty">暂无数据</div>';
+}
+
+async function exportCSV(){
+  const r = await fetch(API+"/survey/export",{headers:H()});
+  const d = await r.json();
+  const rows = d.rows||[];
+  if(!rows.length) return alert("暂无数据");
+  const cols = [...new Set(rows.flatMap(o=>Object.keys(o)))];
+  const cell = v => {
+    if (v == null) return "";
+    if (Array.isArray(v)) v = v.join("|");
+    else if (typeof v === "object") v = Object.entries(v).map(([a,b])=>a+"="+b).join("|");
+    return '"' + String(v).replace(/"/g,'""') + '"';
+  };
+  const csv = "﻿" + cols.join(",") + "\n" + rows.map(o=>cols.map(c=>cell(o[c])).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download = "问卷原始数据_" + new Date().toISOString().slice(0,10) + ".csv";
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+if (token) load();
+</script>
+</body>
+</html>
