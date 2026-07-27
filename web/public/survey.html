@@ -213,19 +213,6 @@
     <textarea name="H5"></textarea></div>
 </section>
 
-<!-- ============ 联系方式 ============ -->
-<section>
-  <h2>联系方式<span class="hint">选填</span></h2>
-  <p class="sec-note">便于功能上线后回访确认，不会用于其他用途。</p>
-  <div class="q" data-qid="R">
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <input type="text" name="R_name" placeholder="称呼" style="max-width:180px">
-      <input type="text" name="R_org" placeholder="单位/课题组" style="max-width:240px">
-      <input type="text" name="R_contact" placeholder="邮箱或微信" style="max-width:240px">
-    </div>
-  </div>
-</section>
-
 <div id="out">
   <div class="qt" id="outTitle">提交结果</div>
   <div id="outMsg" style="font-size:14.5px;margin-bottom:10px"></div>
@@ -490,11 +477,10 @@ function copyOut(){
 }
 function downloadOut(){
   const res = lastRes || buildResult();
-  const name = (res.答案.R_name || "匿名");
   const blob = new Blob([JSON.stringify(res, null, 2)], {type:"application/json"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `DataHub反馈_${name}_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `DataHub反馈_${new Date().toISOString().slice(0,16).replace(/[:T]/g,"-")}.json`;
   a.click(); URL.revokeObjectURL(a.href);
 }
 function clearAll(){
