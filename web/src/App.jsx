@@ -386,7 +386,7 @@ function DatasetCard({ d, onOpen, inCart, onToggleCart, query, gallery }) {
         <div className="min-w-0 cursor-pointer" onClick={() => onOpen(d.dataset_id)}>
           <div className="font-semibold text-slate-900 dark:text-zinc-100 truncate flex items-center gap-1.5">
             {d.name}
-            {dead && <span title="链接失效" className="text-rose-500"><WifiOff size={13} /></span>}
+            {dead && <span title="源站已确认该链接失效（连续多次 404）" className="text-rose-500"><WifiOff size={13} /></span>}
           </div>
           <div className="text-xs text-slate-400 dark:text-zinc-500 font-mono truncate">{d.dataset_id}</div>
         </div>

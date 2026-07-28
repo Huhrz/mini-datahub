@@ -30,25 +30,41 @@ def _apply_mirror(url: str) -> str:
 
 
 def check_url(url, timeout=8):
-    """返回 (alive: bool, status: 状态码或错误简述)。"""
+    """返回 (verdict, status, final_url)。
+
+    verdict 三态 —— 区分"真失效"与"我们连不上"，避免误报：
+      "alive"   链接正常（含被重定向到新地址）
+      "dead"    源端明确说没了（404/410）—— 这才是真的失效
+      "unknown" 我们这边连不上（网络受限/超时/SSL），**不能**判定为失效
+
+    final_url：若发生永久重定向，返回新地址，供自动修复写回数据库。
+    """
     if not url:
-        return False, "无链接"
-    url = _apply_mirror(url)
+        return "dead", "无链接", None
+    probe = _apply_mirror(url)
     try:
         import requests
     except ImportError:
-        return False, "需要 requests：pip install requests"
+        return "unknown", "需要 requests", None
     try:
-        # 先 HEAD（快）；部分服务器不支持 HEAD，再退回 GET
-        r = requests.head(url, allow_redirects=True, timeout=timeout, headers=UA)
+        r = requests.head(probe, allow_redirects=True, timeout=timeout, headers=UA)
         if r.status_code in (400, 403, 405, 501):
-            r = requests.get(url, allow_redirects=True, timeout=timeout,
+            r = requests.get(probe, allow_redirects=True, timeout=timeout,
                              headers=UA, stream=True)
-        return (r.status_code < 400), r.status_code
+        code = r.status_code
+        if code in (404, 410):
+            return "dead", code, None
+        if code < 400:
+            # 跟随重定向后的最终地址（用于自动修复改名/迁移的数据集）
+            final = r.url if (r.url and r.url.rstrip("/") != probe.rstrip("/")) else None
+            return "alive", code, final
+        # 401/403(需登录/gated)、5xx(源端故障) —— 都不算"数据集没了"
+        return "unknown", code, None
     except requests.exceptions.SSLError:
-        return False, "SSL证书错误(装 certifi 或运行 Install Certificates)"
+        return "unknown", "SSLError", None
     except requests.exceptions.RequestException as e:
-        return False, type(e).__name__
+        # ConnectionError / Timeout：多为**我们这边**网络不可达，不判失效
+        return "unknown", type(e).__name__, None
 
 
 def main():
@@ -74,29 +90,74 @@ def main():
 
     print(f"并发检查 {len(rows)} 个数据集的主页链接…")
     from concurrent.futures import ThreadPoolExecutor
+
     def check(row):
         did, name, homepage = row
-        alive, status = check_url(homepage)
-        return (did, name, homepage, alive, str(status))
+        verdict, status, final = check_url(homepage)
+        return (did, name, homepage, verdict, str(status), final)
+
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
         results = list(ex.map(check, rows))
 
-    dead = sum(1 for r in results if not r[3])
-    for did, name, homepage, alive, status in results:
-        if not alive:
-            print(f"❌ {status:<28} {name:<28} {homepage}")
+    # 读取历史连续失败次数（连续 N 次才判定失效，消除偶发抖动）
+    prev = {}
+    try:
+        for r in store.run(con, "SELECT dataset_id, fail_count FROM link_health"):
+            prev[r[0]] = int(r[1] or 0)
+    except Exception:
+        pass
 
-    print(f"\n小结：{len(rows)} 个里 {dead} 个链接失效。")
+    FAIL_THRESHOLD = 3
+    n_alive = n_dead = n_unknown = n_fixed = 0
+    records, fixes = [], []
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    for did, name, homepage, verdict, status, final in results:
+        if verdict == "alive":
+            fails = 0
+            n_alive += 1
+            if final:                      # 自动修复：跟随重定向，写回新地址
+                fixes.append((final, did))
+                n_fixed += 1
+                print(f"🔁 自动修复 {name[:30]:<32} -> {final[:60]}")
+        elif verdict == "dead":
+            fails = prev.get(did, 0) + 1
+            n_dead += 1
+            print(f"❌ {status:<14} {name[:28]:<30} {homepage}")
+        else:                              # unknown：我们连不上，不算失效
+            fails = prev.get(did, 0)       # 不累加，避免网络问题把好数据集拖黑
+            n_unknown += 1
+
+        # 只有"确认失效"且连续达阈值，才在前端标红
+        alive_flag = not (verdict == "dead" and fails >= FAIL_THRESHOLD)
+        records.append((did, alive_flag, verdict, status, fails, ts))
+
+    print(f"\n小结：共 {len(rows)} 个 —— 正常 {n_alive}，确认失效 {n_dead}，"
+          f"无法验证(我方网络受限) {n_unknown}，自动修复 {n_fixed}")
+    if n_unknown:
+        print("提示：'无法验证'多为本机网络访问不到源站（如国内访问 github.io/GCS），"
+              "不代表数据集失效，前端不会标红。")
 
     if args.write:
-        # 写回 link_health 表：门户可据此标记失效数据集（对应文档"联邦指针失效"风险）
+        if fixes:                          # 把重定向后的新地址写回，真正"自动修复"
+            store.run_many(con, "UPDATE datasets SET homepage = ? WHERE dataset_id = ?", fixes)
+            print(f"[修复] 已更新 {len(fixes)} 个数据集的主页地址。")
+
         store.run(con, "CREATE TABLE IF NOT EXISTS link_health "
-                       "(dataset_id VARCHAR PRIMARY KEY, alive BOOLEAN, status VARCHAR, checked_at VARCHAR)")
+                       "(dataset_id VARCHAR PRIMARY KEY, alive BOOLEAN, verdict VARCHAR, "
+                       "status VARCHAR, fail_count BIGINT, checked_at VARCHAR)")
+        # 兼容旧表结构：缺列则补
+        try:
+            cols = set(store.table_columns(con, "link_health"))
+            for c, t in (("verdict", "VARCHAR"), ("fail_count", "BIGINT")):
+                if c not in cols:
+                    store.run(con, store.ddl(f"ALTER TABLE link_health ADD COLUMN {c} {t}"))
+        except Exception:
+            pass
         store.run(con, "DELETE FROM link_health")
-        ts = time.strftime("%Y-%m-%d %H:%M:%S")
-        store.run_many(con, "INSERT INTO link_health VALUES (?, ?, ?, ?)",
-                       [(did, alive, status, ts) for did, name, homepage, alive, status in results])
-        print(f"[link_health] 已写回 {len(results)} 条检查结果（{dead} 个失效）。")
+        store.run_many(con, "INSERT INTO link_health VALUES (?, ?, ?, ?, ?, ?)", records)
+        flagged = sum(1 for r in records if not r[1])
+        print(f"[link_health] 已写回 {len(records)} 条（前端标红 {flagged} 个）。")
 
 
 if __name__ == "__main__":
