@@ -75,8 +75,21 @@ _JSON_COLS = ["action_convention", "tasks", "scenes", "modalities",
               "linked_benchmarks", "quality_report"]
 
 
+def _clean_json(v):
+    """把 NaN / Infinity 换成 None —— 它们不是合法 JSON，会让整个响应序列化失败。
+    （numpy/pandas 读出来的空值常是 NaN，必须在出口统一清洗。）"""
+    import math
+    if isinstance(v, float):
+        return None if (math.isnan(v) or math.isinf(v)) else v
+    if isinstance(v, dict):
+        return {k: _clean_json(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_clean_json(x) for x in v]
+    return v
+
+
 def _parse_row(d: dict) -> dict:
-    """把 JSON 文本字段解析成对象，-1/0 之类空值规整一下。"""
+    """把 JSON 文本字段解析成对象，-1/0 之类空值规整一下，并清洗 NaN/Inf。"""
     for c in _JSON_COLS:
         if c in d and isinstance(d[c], str) and d[c]:
             try:
@@ -84,9 +97,12 @@ def _parse_row(d: dict) -> dict:
             except Exception:
                 pass
     for c in ("quality_score", "learnability_score"):
-        if d.get(c) is not None and d[c] < 0:
-            d[c] = None
-    return d
+        try:
+            if d.get(c) is not None and d[c] < 0:
+                d[c] = None
+        except TypeError:
+            pass
+    return {k: _clean_json(v) for k, v in d.items()}
 
 
 @app.get("/api/stats")
@@ -175,7 +191,7 @@ def export_manifest(ids: str = "", commercial_only: bool = False):
             f"SELECT dataset_id, name, source, source_uri, source_format, license_spdx, "
             f"commercial_ok, redistribute_ok, embodiment, n_episodes, quality_score FROM datasets "
             f"WHERE dataset_id IN ({ph})", id_list)
-    items = df.to_dict(orient="records")
+    items = [_clean_json(r) for r in df.to_dict(orient="records")]
     for i in items:
         i["commercial_ok"] = bool(i.get("commercial_ok"))
         i["redistribute_ok"] = bool(i.get("redistribute_ok"))
@@ -497,7 +513,7 @@ def similar(dataset_id: str, k: int = 6):
             f"SELECT dataset_id, name, embodiment, source_format, n_episodes, "
             f"quality_score, commercial_ok FROM datasets WHERE dataset_id IN ({ph})", ids)
     byid = {r["dataset_id"]: r for r in df.to_dict(orient="records")}
-    out = [{**byid[d], "score": round(score[d], 3)} for d in ids if d in byid]
+    out = [_clean_json({**byid[d], "score": round(score[d], 3)}) for d in ids if d in byid]
     return {"dataset_id": dataset_id, "similar": out}
 
 
@@ -698,7 +714,7 @@ def collections_get(cid: str, user=Depends(current_user)):
             df = store.run_df(_con,
                 f"SELECT dataset_id, name, embodiment, source_format, n_episodes, "
                 f"quality_score, commercial_ok FROM datasets WHERE dataset_id IN ({ph})", ids)
-            rows = df.to_dict(orient="records")
+            rows = [_clean_json(r) for r in df.to_dict(orient="records")]
     return {"id": cid, "ids": ids, "datasets": rows}
 
 
