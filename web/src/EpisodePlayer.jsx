@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
-import { Loader2, ExternalLink, ChevronLeft, ChevronRight, Film } from "lucide-react";
+import { Loader2, ExternalLink, ChevronLeft, ChevronRight, Film, Image as ImageIcon } from "lucide-react";
 
 // 自建播放器：HTML5 <video>（媒体直连源 CDN）+ 与视频同步的状态/动作曲线。
 // 完全我们自己控制的 UI，不嵌任何第三方网站。
@@ -200,6 +200,49 @@ export function OfficialViz({ repoId, totalEpisodes = 0 }) {
   );
 }
 
+// 缓存截图预览条：详情页顶部先展示几张本地截图（秒开），点开可放大。
+export function ThumbStrip({ datasetId }) {
+  const [urls, setUrls] = useState(null);
+  const [big, setBig] = useState(null);
+  useEffect(() => {
+    let cancel = false;
+    setUrls(null); setBig(null);
+    api.thumbs(datasetId, 1)
+      .then((r) => { if (!cancel) setUrls(r.urls || []); })
+      .catch(() => { if (!cancel) setUrls([]); });
+    return () => { cancel = true; };
+  }, [datasetId]);
+
+  if (urls == null) return (
+    <div className="flex items-center gap-2 text-slate-400 dark:text-zinc-500 text-sm py-5 justify-center">
+      <Loader2 size={15} className="animate-spin" /> 加载预览截图…</div>
+  );
+  if (!urls.length) return null;
+
+  return (
+    <div className="mb-5">
+      <div className="text-sm font-semibold text-slate-900 dark:text-zinc-100 mb-2 flex items-center gap-1.5">
+        <ImageIcon size={15} /> 内容预览
+        <span className="text-[11px] font-normal text-slate-400 dark:text-zinc-500">（缓存截图，点击放大）</span>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {urls.map((u, i) => (
+          <button key={i} onClick={() => setBig(u)}
+            className="rounded-lg overflow-hidden border border-slate-200 dark:border-zinc-800 hover:border-cyan-500 transition">
+            <img src={u} alt="" className="w-full aspect-video object-cover" />
+          </button>
+        ))}
+      </div>
+      {big && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={() => setBig(null)}>
+          <div className="absolute inset-0 bg-black/70" />
+          <img src={big} alt="" className="relative max-h-[85vh] max-w-full rounded-lg shadow-2xl" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 一条样本的迷你片段：定位到该集时间片，悬停在区间内循环播放。
 function SampleClip({ cam }) {
   const vref = useRef(null);
@@ -275,16 +318,18 @@ export function Thumbnail({ datasetId, embodiment }) {
     const io = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting && !done) {
         done = true; io.disconnect();
-        // 先看有没有本地缓存截图
-        api.thumbs(datasetId)
-          .then((r) => {
-            if (r?.urls?.length) { setImgs(r.urls); setState("img"); return; }
-            // 回退到 HF 视频预览
-            return api.preview(datasetId).then((p) => {
-              p?.video ? (setVurl(p.video), setState("video")) : setState("none");
-            });
-          })
-          .catch(() => setState("none"));
+        // 错峰发请求，避免一屏卡片同时打爆后端（曾导致列表误报"连不上后端"）
+        setTimeout(() => {
+          api.thumbs(datasetId)
+            .then((r) => {
+              if (r?.urls?.length) { setImgs(r.urls); setState("img"); return; }
+              // 回退到 HF 视频预览（较慢，仅在无缓存截图时）
+              return api.preview(datasetId).then((p) => {
+                p?.video ? (setVurl(p.video), setState("video")) : setState("none");
+              });
+            })
+            .catch(() => setState("none"));
+        }, Math.random() * 700);
       }
     }, { rootMargin: "200px" });
     io.observe(el);

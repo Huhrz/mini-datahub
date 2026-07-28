@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, setToken, getToken } from "./api.js";
 import CoverageHeatmap from "./CoverageHeatmap.jsx";
-import EpisodePlayer, { Thumbnail, SampleStrip, OfficialViz } from "./EpisodePlayer.jsx";
+import EpisodePlayer, { Thumbnail, SampleStrip, OfficialViz, ThumbStrip } from "./EpisodePlayer.jsx";
 import {
   Search, SlidersHorizontal, ExternalLink, AlertTriangle,
   Sun, Moon, Check, Film, LayoutGrid, List, ChevronLeft, ChevronRight,
@@ -151,6 +151,8 @@ function Detail({ id, onClose, onOpen }) {
           ) : null
         )}
         <div className="mt-5">
+          <ThumbStrip datasetId={ds.dataset_id} />
+
           <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <div className="text-sm font-semibold text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
               <Film size={15} /> 可视化
@@ -546,22 +548,27 @@ export default function App() {
       (!filters.commercial_only || d.commercial_ok) &&
       (!filters.failures_only || d.has_failure_labels) &&
       ((d.quality_score ?? 1) >= filters.min_quality));
-    const done = (payload) => { if (!cancel) { setData(payload); setLoading(false); } };
-    const fail = (e) => { if (!cancel) { setError("连不上后端，请确认 uvicorn 已启动 (:8000)"); setLoading(false); } };
-    if (q) {
-      api.search(q).then((r) => {
-        const all = clientFilter(r.datasets || []);
-        const pages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
-        done({ count: all.length, pages, datasets: all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), mode: r.mode });
-      }).catch(fail);
-    } else {
-      api.datasets({
-        embodiment: filters.embodiment, format: filters.format, provenance: filters.provenance,
-        commercial_only: filters.commercial_only, failures_only: filters.failures_only,
-        min_episodes: filters.min_episodes, min_quality: filters.min_quality,
-        concept: filters.concepts.join(","), page, page_size: PAGE_SIZE,
-      }).then(done).catch(fail);
-    }
+    const done = (payload) => { if (!cancel) { setData(payload); setError(null); setLoading(false); } };
+    const fail = () => { if (!cancel) { setError("请求失败，请稍后重试"); setLoading(false); } };
+
+    const fetchOnce = () => q
+      ? api.search(q).then((r) => {
+          const all = clientFilter(r.datasets || []);
+          const pages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+          return { count: all.length, pages, datasets: all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), mode: r.mode };
+        })
+      : api.datasets({
+          embodiment: filters.embodiment, format: filters.format, provenance: filters.provenance,
+          commercial_only: filters.commercial_only, failures_only: filters.failures_only,
+          min_episodes: filters.min_episodes, min_quality: filters.min_quality,
+          concept: filters.concepts.join(","), page, page_size: PAGE_SIZE,
+        });
+
+    // 失败自动重试一次（后端偶发繁忙时不至于把列表清空）
+    fetchOnce()
+      .then(done)
+      .catch(() => new Promise((r) => setTimeout(r, 900)).then(fetchOnce).then(done).catch(fail));
+
     return () => { cancel = true; };
   }, [filters, page]);
 
@@ -682,11 +689,16 @@ export default function App() {
                 </div>
               </div>
 
-              {error ? (
-                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 text-sm py-10 justify-center">
-                  <WifiOff size={16} /> {error}
+              {error && (
+                <div className="flex items-center justify-center gap-3 text-rose-600 dark:text-rose-400 text-sm mb-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-500/10">
+                  <span className="flex items-center gap-1.5"><WifiOff size={15} /> {error}</span>
+                  <button onClick={() => setFilters((f) => ({ ...f }))}
+                    className="px-2.5 py-1 rounded-md border border-rose-300 dark:border-rose-500/40 text-xs font-medium hover:bg-white dark:hover:bg-zinc-900">
+                    重试
+                  </button>
                 </div>
-              ) : loading ? (
+              )}
+              {error && data.datasets.length === 0 ? null : loading ? (
                 <div className="flex items-center gap-2 text-slate-400 dark:text-zinc-500 text-sm py-16 justify-center">
                   <Loader2 size={18} className="animate-spin" /> 加载中…
                 </div>
