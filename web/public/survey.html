@@ -80,7 +80,7 @@
     <h1>🤖 机器人 DataHub · 用户反馈问卷</h1>
     <p class="sub">跨源机器人数据聚合平台 —— 帮助我们确定下一步该做什么</p>
     <div class="meta">
-      <span>⏱ 约 8–12 分钟</span>
+      <span>⏱ 约 5 分钟</span>
       <span>🔗 测试地址：<a href="http://47.116.26.211:8080" target="_blank" rel="noreferrer">47.116.26.211:8080</a></span>
       <span>💾 自动保存草稿</span>
     </div>
@@ -94,59 +94,44 @@
 
 <div class="wrap">
 
-<p class="note">建议先花几分钟实际操作一下测试站点，再来作答 —— 尤其是 <b>B 部分（任务测试）</b>。所有题目均可跳过，如实作答即可。</p>
+<p class="note">建议先花几分钟操作一下测试站点再作答 —— 尤其是 <b>B 部分（任务测试）</b>。所有题目均可跳过。</p>
 
 <!-- ============ A ============ -->
 <section>
-  <h2>A · 关于您</h2>
-  <p class="sec-note">用于分群分析，不会公开。</p>
+  <h2>A · 关于您<span class="hint">3 题</span></h2>
 
   <div class="q" data-qid="A1"><div class="qt"><span class="id">A1</span>您的身份<span class="hint">单选</span></div>
     <div id="A1"></div></div>
 
-  <div class="q" data-qid="A2"><div class="qt"><span class="id">A2</span>主要研究/工作方向<span class="hint">可多选</span></div>
-    <div id="A2"></div></div>
-
-  <div class="q" data-qid="A3"><div class="qt"><span class="id">A3</span>日常使用的机器人本体<span class="hint">可多选</span></div>
+  <div class="q" data-qid="A3"><div class="qt"><span class="id">A2</span>日常使用的机器人本体<span class="hint">可多选</span></div>
     <div id="A3"></div></div>
 
-  <div class="q" data-qid="A4"><div class="qt"><span class="id">A4</span>接触过的数据格式<span class="hint">可多选</span></div>
+  <div class="q" data-qid="A4"><div class="qt"><span class="id">A3</span>接触过的数据格式<span class="hint">可多选</span></div>
     <div id="A4"></div></div>
-
-  <div class="q" data-qid="A5"><div class="qt"><span class="id">A5</span>目前寻找数据集的主要途径<span class="hint">可多选</span></div>
-    <div id="A5"></div></div>
-
-  <div class="q" data-qid="A6"><div class="qt"><span class="id">A6</span>多久需要找一次新数据集<span class="hint">单选</span></div>
-    <div id="A6"></div></div>
 </section>
 
 <!-- ============ B ============ -->
 <section>
   <h2>B · 任务测试<span class="hint">请实际操作后作答</span></h2>
-  <p class="sec-note">这一节最能暴露真实卡点，对我们价值最高。</p>
+  <p class="sec-note">这一节最能暴露真实卡点，对我们价值最高。只需回答能否完成。</p>
 
-  <div class="q" data-qid="B1a"><div class="qt"><span class="id">B1</span>任务一：找到一个「双臂 + 抓取放置」且可商用的数据集</div>
+  <div class="q" data-qid="B1a"><div class="qt"><span class="id">B1</span>找到一个「双臂 + 抓取放置」且可商用的数据集</div>
     <div id="B1a"></div></div>
-  <div class="q" data-qid="B1b"><div class="qt"><span class="id">B1-2</span>大致耗时</div><div id="B1b"></div></div>
-  <div class="q" data-qid="B1c"><div class="qt"><span class="id">B1-3</span>遇到的卡点<span class="hint">可多选</span></div><div id="B1c"></div></div>
 
-  <div class="q" data-qid="B2a"><div class="qt"><span class="id">B2</span>任务二：在不下载数据的前提下，判断某数据集是否适合你的训练</div>
+  <div class="q" data-qid="B2a"><div class="qt"><span class="id">B2</span>不下载数据，判断某数据集是否适合你的训练</div>
     <div id="B2a"></div></div>
-  <div class="q" data-qid="B2b"><div class="qt"><span class="id">B2-2</span>缺少哪些信息导致难以判断<span class="hint">可多选</span></div><div id="B2b"></div></div>
 
-  <div class="q" data-qid="B3a"><div class="qt"><span class="id">B3</span>任务三：预览/回放一条轨迹，判断数据质量</div><div id="B3a"></div></div>
-  <div class="q" data-qid="B3b"><div class="qt"><span class="id">B3-2</span>可视化体验</div><div id="B3b"></div></div>
+  <div class="q" data-qid="B3a"><div class="qt"><span class="id">B3</span>预览/回放一条轨迹，判断数据质量</div><div id="B3a"></div></div>
 
-  <div class="q" data-qid="B4a"><div class="qt"><span class="id">B4</span>任务四：选若干数据集并导出训练清单</div><div id="B4a"></div></div>
-  <div class="q" data-qid="B4b"><div class="qt"><span class="id">B4-2</span>导出的清单能否接入你的训练流程</div><div id="B4b"></div></div>
+  <div class="q" data-qid="B4a"><div class="qt"><span class="id">B4</span>选若干数据集并导出训练清单</div><div id="B4a"></div></div>
 
-  <div class="q" data-qid="B5"><div class="qt"><span class="id">B5</span>整体上手难度</div><div id="B5"></div></div>
+  <div class="q" data-qid="B2b"><div class="qt"><span class="id">B5</span>判断数据可用性时，缺少哪些信息？<span class="hint">可多选</span></div><div id="B2b"></div></div>
 </section>
 
 <!-- ============ C ============ -->
 <section>
   <h2>C · 现有功能评估<span class="hint">核心题</span></h2>
-  <p class="sec-note">请对每项分别评价「对我的重要性」与「当前满意度」。1=很低，5=很高；没用过选「未使用」。</p>
+  <p class="sec-note">对每项评价「重要性」与「满意度」。1=很低，5=很高；没用过选「未使用」。</p>
   <div class="q" data-qid="C"><table id="Ctab">
     <thead><tr><th>功能</th><th class="r">重要性</th><th class="r">满意度</th></tr></thead>
     <tbody></tbody></table></div>
@@ -154,16 +139,12 @@
 
 <!-- ============ D ============ -->
 <section>
-  <h2>D · 专业元数据需求</h2>
-  <p class="sec-note">机器人数据特有的判断依据 —— 帮我们确定该补哪些字段。</p>
+  <h2>D · 元数据需求<span class="hint">机器人数据特有</span></h2>
 
-  <div class="q" data-qid="D1"><div class="qt"><span class="id">D1</span>下列字段对你判断「这份数据能不能用」的重要程度<span class="hint">1=不重要，5=非常重要</span></div>
+  <div class="q" data-qid="D1"><div class="qt"><span class="id">D1</span>下列字段对你判断「数据能不能用」的重要程度<span class="hint">1=不重要，5=非常重要</span></div>
     <table id="D1tab"><thead><tr><th>字段</th><th class="r">重要性</th></tr></thead><tbody></tbody></table></div>
 
-  <div class="q" data-qid="D2"><div class="qt"><span class="id">D2</span>当前站点里，你认为最缺失或最不可靠的元数据<span class="hint">可多选</span></div>
-    <div id="D2"></div></div>
-
-  <div class="q" data-qid="D3"><div class="qt"><span class="id">D3</span>你实际训练时最常见的数据处理痛点<span class="hint">最多选 3 项</span></div>
+  <div class="q" data-qid="D3"><div class="qt"><span class="id">D2</span>你实际训练时最常见的数据处理痛点<span class="hint">最多选 3 项</span></div>
     <div id="D3"></div></div>
 </section>
 
@@ -183,20 +164,11 @@
 
 <!-- ============ F ============ -->
 <section>
-  <h2>F · 可信度与合规</h2>
+  <h2>F · 可信度与体验<span class="hint">4 题</span></h2>
   <div class="q" data-qid="F1"><div class="qt"><span class="id">F1</span>你是否信任站内展示的「质量分」</div><div id="F1"></div></div>
-  <div class="q" data-qid="F2"><div class="qt"><span class="id">F2</span>要让质量分可信，你最需要什么<span class="hint">可多选</span></div><div id="F2"></div></div>
-  <div class="q" data-qid="F3"><div class="qt"><span class="id">F3</span>License 信息对你的实际影响</div><div id="F3"></div></div>
-  <div class="q" data-qid="F4"><div class="qt"><span class="id">F4</span>是否愿意把自己/团队的数据集提交到平台</div><div id="F4"></div></div>
-</section>
-
-<!-- ============ G ============ -->
-<section>
-  <h2>G · 性能与体验</h2>
-  <div class="q" data-qid="G1"><div class="qt"><span class="id">G1</span>页面整体加载速度</div><div id="G1"></div></div>
-  <div class="q" data-qid="G2"><div class="qt"><span class="id">G2</span>可视化/回放加载速度</div><div id="G2"></div></div>
-  <div class="q" data-qid="G3"><div class="qt"><span class="id">G3</span>界面信息密度</div><div id="G3"></div></div>
-  <div class="q" data-qid="G4"><div class="qt"><span class="id">G4</span>遇到过下列哪些问题<span class="hint">可多选</span></div><div id="G4"></div></div>
+  <div class="q" data-qid="F3"><div class="qt"><span class="id">F2</span>License 信息对你的实际影响</div><div id="F3"></div></div>
+  <div class="q" data-qid="G2"><div class="qt"><span class="id">F3</span>可视化/回放加载速度</div><div id="G2"></div></div>
+  <div class="q" data-qid="G4"><div class="qt"><span class="id">F4</span>遇到过下列哪些问题<span class="hint">可多选</span></div><div id="G4"></div></div>
 </section>
 
 <!-- ============ H ============ -->
@@ -207,10 +179,8 @@
   <div class="q" data-qid="H2"><div class="qt"><span class="id">H2</span>相比你现在的做法，这个平台最大的价值是</div><div id="H2"></div></div>
   <div class="q" data-qid="H3"><div class="qt"><span class="id">H3</span>你最希望增加的一个功能是什么？为什么？</div>
     <textarea name="H3" placeholder="越具体越好，例如：希望能按动作空间筛选，因为混采时关节控制和末端控制不能混用……"></textarea></div>
-  <div class="q" data-qid="H4"><div class="qt"><span class="id">H4</span>使用中最让你困惑或受阻的一处是？</div>
+  <div class="q" data-qid="H4"><div class="qt"><span class="id">H4</span>使用中最让你困惑或受阻的一处是？<span class="hint">选填</span></div>
     <textarea name="H4" placeholder="哪一步卡住了、当时想做什么"></textarea></div>
-  <div class="q" data-qid="H5"><div class="qt"><span class="id">H5</span>如果要成为你日常工作流的一部分，还差什么？</div>
-    <textarea name="H5"></textarea></div>
 </section>
 
 <div id="out">
@@ -239,64 +209,42 @@
 /* ---------------- 题目数据 ---------------- */
 const RADIO = {
   A1:["高校/研究所 研究生","高校/研究所 教师或研究员","企业 算法工程师(VLA/具身智能)","企业 数据/平台工程师","机器人本体或系统工程师","其他"],
-  A6:["每周多次","每周约一次","每月一次","几个月一次","很少"],
   B1a:["顺利完成","勉强完成","未能完成","没尝试"],
-  B1b:["<1 分钟","1–3 分钟","3–5 分钟",">5 分钟"],
   B2a:["顺利完成","勉强完成","未能完成","没尝试"],
   B3a:["顺利完成","勉强完成","未能完成","没尝试"],
-  B3b:["很流畅","可接受","偏慢","无法使用"],
   B4a:["顺利完成","勉强完成","未能完成","没找到这个功能"],
-  B4b:["可以直接用","需要改造","不可用","未尝试"],
-  B5:["无需说明即可上手","略需摸索","需要指导","较难理解"],
   F1:["信任，可作为筛选依据","部分信任，仅作参考","不信任，需要看原始指标","不清楚它怎么算的"],
   F3:["决定性：不可商用的绝不使用","重要：需明确记录来源与条款","一般：主要做研究，影响不大","不关心"],
-  F4:["愿意，可公开","愿意，但需限定范围/授权控制","需要机构审批","不愿意"],
-  G1:["很快","可接受","偏慢","难以忍受"],
   G2:["很快","可接受","偏慢","打不开"],
-  G3:["正好","偏多，眼花","偏少，不够用"],
   H2:["跨源统一检索，省去多平台切换","能快速判断数据可用性","覆盖度/缺口分析，指导采集","合规与许可证管理","训练清单可复现","暂时看不出明显价值"]
 };
 const CHECK = {
-  A2:["视觉-语言-动作模型(VLA)","模仿学习/行为克隆","强化学习","世界模型/视频预训练","抓取与操作","移动操作/导航","灵巧手/多指操作","数据采集与标注系统","Sim2Real/仿真","其他"],
   A3:["单臂(Franka/UR/xArm 等)","双臂(ALOHA/双臂协作)","人形","移动底盘+机械臂","四足","灵巧手","纯仿真环境","暂无实机"],
   A4:["LeRobot v2.x","LeRobot v3.0","RLDS/TFDS(Open X-Embodiment)","HDF5(RoboMimic/ALOHA 等)","ROS bag/MCAP","Zarr","机构自定义格式","不清楚/未接触"],
-  A5:["HuggingFace 搜索","论文里的引用与主页","Open X-Embodiment 官网","同行推荐/社群","机构内部数据","其他"],
-  B1c:["不知道用哪个筛选项","筛选结果不准","任务概念看不懂","加载慢","无卡点","其他"],
   B2b:["动作空间/约定不清","相机参数与标定信息","控制频率与时间同步","成功/失败标注","语言指令质量","数据采集方式","场景与物体多样性","无缺失","其他"],
-  D2:["动作约定","相机标定","频率/同步","采集方式","成功失败标注","语言指令","许可证","场景物体","都够用","其他"],
   D3:["不同来源格式不统一，转换成本高","动作空间不一致，难以混合训练","数据质量参差，需要人工筛","缺少失败样本","语言标注质量差或缺失","下载体积过大/带宽受限","License 不清晰不敢用","找不到目标任务/本体的数据","难以复现他人的数据配比","其他"],
-  F2:["公开计算公式与权重","标明是元数据初筛还是数据级质检","给出样本量与置信区间","展示扣分明细(缺帧率、动作饱和度等)","可下载原始质检报告","其他"],
   G4:["某些数据集打不开可视化","缩略图缺失","搜索结果不相关","筛选后结果为空","链接失效提示","页面报错","未遇到问题","其他"]
 };
 const C_ROWS = [
   ["C1","跨源聚合（HF + OXE + 机构格式统一检索）"],
-  ["C2","跨语言语义检索（中文搜英文数据）"],
-  ["C3","按任务概念/本体/格式的分面筛选"],
+  ["C2","检索与筛选（跨语言语义搜索 + 任务/本体分面）"],
   ["C4","画廊按图浏览（缩略图快速判断内容）"],
   ["C5","轨迹可视化回放（视频 + 状态/动作曲线）"],
   ["C6","数据集详情的元数据完整度"],
   ["C7","质量分（元数据初筛）"],
   ["C8","License / 可商用标注与导出门禁"],
   ["C9","覆盖度地图与数据缺口报告"],
-  ["C10","相似数据集推荐"],
-  ["C11","训练清单导出（data mixture）"],
-  ["C12","适用评测基准链接"],
-  ["C13","Croissant 标准元数据导出"],
-  ["C14","账户与收藏集（保存选型结果）"]
+  ["C11","训练清单导出（data mixture）"]
 ];
 const D_ROWS = [
-  ["D1a","动作空间与约定（关节/末端、绝对/增量、单位、坐标系）"],
-  ["D1b","控制频率与多传感器时间同步"],
-  ["D1c","相机内参/外参与标定信息"],
-  ["D1d","本体规格（自由度、末端执行器、臂展）"],
+  ["D1a","动作空间与约定（关节/末端、绝对/增量、坐标系）"],
+  ["D1b","控制频率、时间同步与相机标定"],
+  ["D1d","本体规格（自由度、末端执行器）"],
   ["D1e","成功/失败标注与奖励信号"],
   ["D1f","语言指令的粒度与质量"],
   ["D1g","场景/物体多样性描述"],
-  ["D1h","采集方式（遥操作/动觉示教/脚本/仿真/自主）"],
-  ["D1i","力觉/触觉信号"],
-  ["D1j","深度/点云"],
-  ["D1k","数据规模（轨迹数、时长、帧数、文件大小）"],
-  ["D1l","许可证与可再分发条款"]
+  ["D1i","力觉/触觉、深度/点云等额外模态"],
+  ["D1l","许可证与再分发条款"]
 ];
 const E_ROWS = [
   ["E1a","深度质检（抽样真实轨迹算质量分，并给置信区间）"],
@@ -306,13 +254,9 @@ const E_ROWS = [
   ["E1e","程序化访问（Python SDK / API Key）"],
   ["E1f","训练清单版本化 + 一键复现他人配比"],
   ["E1g","动作空间自动换算工具（关节↔末端、绝对↔增量）"],
-  ["E1h","团队工作区（共享收藏集与筛选条件）"],
   ["E1i","数据集引用信息（BibTeX 一键复制）"],
   ["E1j","用户提交自有数据集（社区贡献入口）"],
-  ["E1k","数据集变更订阅与更新提醒"],
-  ["E1l","评测结果回链（哪些模型用过这份数据、成绩如何）"],
-  ["E1m","按需子集下载（只取指定轨迹/相机）"],
-  ["E1n","质量/缺口的可视化统计报告导出"]
+  ["E1m","按需子集下载（只取指定轨迹/相机）"]
 ];
 
 /* ---------------- 渲染 ---------------- */
