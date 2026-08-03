@@ -230,8 +230,26 @@ def _parse_tfds_info(info: dict, name: str, version: str, url: str) -> DatasetMe
         provenance_type=prov, embodiment=emb, dof=dof,
         action_convention=conv, modalities=mods, n_cameras=n_cam,
         n_episodes=n_ep, size_bytes=size,
-        homepage="https://robotics-transformer-x.github.io/",
+        homepage=_oxe_homepage(name),
     )
+
+
+def _oxe_homepage(name: str) -> str:
+    """OXE 子数据集的主页。官方只有一个总项目页，指过去无法区分各数据集，
+    所以优先给**该数据集自己的**页面：
+      1) 社区 HF LeRobot 转换版（有独立说明/文件/可视化）
+      2) GCS 上它自己的数据目录
+      3) 都没有才回退 OXE 总项目页
+    """
+    try:
+        import oxe_registry as R
+        repo = R.hf_conversion_guess(name)
+        from huggingface_hub import dataset_info
+        dataset_info(repo)                      # 走镜像；存在才用
+        return f"https://huggingface.co/datasets/{repo}"
+    except Exception:
+        pass
+    return f"https://storage.googleapis.com/gresearch/robotics/{name}"
 
 
 @register("openx_rlds")

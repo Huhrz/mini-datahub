@@ -2,10 +2,12 @@ import React, { useEffect, useState } from "react";
 import { api, setToken, getToken } from "./api.js";
 import CoverageHeatmap from "./CoverageHeatmap.jsx";
 import EpisodePlayer, { Thumbnail, SampleStrip, OfficialViz, ThumbStrip } from "./EpisodePlayer.jsx";
+import { GlossaryProvider, Term, LearnView } from "./Learn.jsx";
 import {
   Search, SlidersHorizontal, ExternalLink, AlertTriangle,
   Sun, Moon, Check, Film, LayoutGrid, List, ChevronLeft, ChevronRight,
   ShoppingCart, Download, X, Loader2, WifiOff, Braces, User, LogOut, FolderHeart, Save, Trash2,
+  GraduationCap,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
@@ -120,14 +122,15 @@ function Detail({ id, onClose, onOpen }) {
         <h2 className="text-xl font-bold mb-1 text-slate-900 dark:text-zinc-50 pr-8">{ds.name}</h2>
         <div className="text-sm text-slate-500 dark:text-zinc-500 mb-4 font-mono break-all">{ds.dataset_id}</div>
         <div className="grid grid-cols-3 gap-3 mb-5">
-          <StatCard label="本体" value={`${ds.embodiment || "—"}`} />
-          <StatCard label="轨迹数" value={ds.n_episodes ?? "—"} />
+          <StatCard label={<Term k="embodiment">本体</Term>} value={`${ds.embodiment || "—"}`} />
+          <StatCard label={<Term k="n_episodes">轨迹数</Term>} value={ds.n_episodes ?? "—"} />
           <StatCard label="可商用" value={ds.commercial_ok ? "是" : "否"} />
         </div>
         <div className="text-sm text-slate-700 dark:text-zinc-300 space-y-1 mb-4">
-          <div>许可证：<code className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 px-1 rounded font-mono">{ds.license_spdx}</code>　源格式：<code className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 px-1 rounded font-mono">{ds.source_format}</code></div>
-          <div>采集方式：{ds.provenance_type || "—"}　来源：{ds.source}</div>
-          <div>质量分：<span className="font-mono">{ds.quality_score != null && ds.quality_score >= 0 ? ds.quality_score.toFixed(2) : "未评分"}</span>
+          <div><Term k="license_spdx">许可证</Term>：<code className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 px-1 rounded font-mono">{ds.license_spdx}</code>
+            <Term k="source_format">源格式</Term>：<code className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 px-1 rounded font-mono">{ds.source_format}</code></div>
+          <div><Term k="provenance_type">采集方式</Term>：{ds.provenance_type || "—"}　来源：{ds.source}</div>
+          <div><Term k="quality_score">质量分</Term>：<span className="font-mono">{ds.quality_score != null && ds.quality_score >= 0 ? ds.quality_score.toFixed(2) : "未评分"}</span>
             {ds.quality_report?.tier === "metadata" && <span className="text-slate-400 dark:text-zinc-500"> （元数据初筛）</span>}</div>
         </div>
 
@@ -138,7 +141,7 @@ function Detail({ id, onClose, onOpen }) {
           </div>
         )}
         {ds.action_convention && Object.keys(ds.action_convention).length > 0 && (
-          <div className="mb-3 text-sm text-slate-700 dark:text-zinc-300"><span className="font-semibold text-slate-900 dark:text-zinc-100">动作约定：</span>
+          <div className="mb-3 text-sm text-slate-700 dark:text-zinc-300"><span className="font-semibold text-slate-900 dark:text-zinc-100"><Term k="action_convention">动作约定</Term>：</span>
             {Object.entries(ds.action_convention).map(([k, v]) => <Tag key={k}>{k}={String(v)}</Tag>)}
           </div>
         )}
@@ -591,9 +594,11 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const tabs = [["list", "数据集", LayoutGrid], ["coverage", "覆盖度地图", SlidersHorizontal], ["compare", "对比回放", Film]];
+  const tabs = [["list", "数据集", LayoutGrid], ["coverage", "覆盖度地图", SlidersHorizontal],
+                ["compare", "对比回放", Film], ["learn", "入门学习", GraduationCap]];
 
   return (
+    <GlossaryProvider>
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
       <header className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-8 py-5 flex items-start justify-between gap-3">
@@ -646,6 +651,7 @@ export default function App() {
         </div>
 
         {tab === "coverage" ? <div className="space-y-4"><CoverageHeatmap /><GapReport /></div>
+        : tab === "learn" ? <LearnView onOpenDataset={setSelected} />
         : tab === "compare" ? <CompareView allDs={allDs} />
         : (
           <div className="flex flex-col md:flex-row gap-6">
@@ -754,6 +760,7 @@ export default function App() {
       {colsOpen && <CollectionsPanel onClose={() => setColsOpen(false)} onLoad={(ids) => setCart(new Set(ids))} />}
       {selected && <Detail id={selected} onClose={() => setSelected(null)} onOpen={setSelected} />}
     </div>
+    </GlossaryProvider>
   );
 }
 

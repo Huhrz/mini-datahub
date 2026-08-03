@@ -51,6 +51,8 @@ export const api = {
   gaps: () => get("/gaps"),
   benchmarks: (id) => get(`/benchmarks/${id}`),
   oxeHf: (id) => get(`/oxe_hf/${id}`),
+  glossary: () => get("/glossary"),
+  learningPath: () => get("/learning_path"),
 
   // ---- 账户 ----
   register: (username, password) => send("/auth/register", "POST", { username, password }),

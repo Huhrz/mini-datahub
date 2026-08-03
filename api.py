@@ -561,6 +561,26 @@ def benchmarks_for(dataset_id: str):
             "benchmarks": bm.match(row.get("embodiment", ""), concepts, dataset_id, row.get("source", ""))}
 
 
+# ==================== 学生引导（术语释义 + 学习路径）====================
+@app.get("/api/glossary")
+def glossary_all():
+    """术语词典：前端悬停讲解用。"""
+    import glossary as gl
+    return {"terms": gl.all_terms()}
+
+
+@app.get("/api/learning_path")
+def learning_path():
+    """入门学习路径：每步挂上目录里真实的示例数据集。"""
+    import learning_path as lp
+    with _lock:
+        df = store.run_df(_con,
+            "SELECT dataset_id, name, embodiment, source_format, n_episodes, n_cameras, "
+            "commercial_ok, modalities, action_convention FROM datasets ORDER BY n_episodes")
+    rows = [_parse_row(r) for r in df.to_dict(orient="records")]
+    return {"steps": lp.build(rows)}
+
+
 # ==================== 缓存截图（快速按图浏览）====================
 def _dataset_video_url(dataset_id: str):
     with _lock:

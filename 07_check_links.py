@@ -52,6 +52,9 @@ def check_url(url, timeout=8):
             r = requests.get(probe, allow_redirects=True, timeout=timeout,
                              headers=UA, stream=True)
         code = r.status_code
+        if code == 429:
+            # 被源站限流（我们打太快），绝不是数据集失效
+            return "unknown", "429 限流", None
         if code in (404, 410):
             return "dead", code, None
         if code < 400:
@@ -73,7 +76,10 @@ def main():
     import store
     ap = argparse.ArgumentParser()
     ap.add_argument("--write", action="store_true", help="把检查结果写回 link_health 表")
-    ap.add_argument("--workers", type=int, default=16, help="并发检查线程数")
+    ap.add_argument("--workers", type=int, default=4,
+                    help="并发检查线程数（默认 4，过高会被 HuggingFace 限流返回 429）")
+    ap.add_argument("--delay", type=float, default=0.25,
+                    help="每次请求前的间隔秒数，进一步避免触发限流")
     args = ap.parse_args()
 
     # --write 需要写库 -> DuckDB 用读写连接；只读检查时才用只读
@@ -93,7 +99,12 @@ def main():
 
     def check(row):
         did, name, homepage = row
+        if args.delay:
+            time.sleep(args.delay)          # 限速，避免触发源站 429
         verdict, status, final = check_url(homepage)
+        if verdict == "unknown" and "429" in str(status):
+            time.sleep(2)                    # 被限流则退避后重试一次
+            verdict, status, final = check_url(homepage)
         return (did, name, homepage, verdict, str(status), final)
 
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
