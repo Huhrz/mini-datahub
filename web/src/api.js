@@ -53,6 +53,7 @@ export const api = {
   oxeHf: (id) => get(`/oxe_hf/${id}`),
   glossary: () => get("/glossary"),
   learningPath: () => get("/learning_path"),
+  report: () => get("/report"),
 
   // ---- 账户 ----
   register: (username, password) => send("/auth/register", "POST", { username, password }),

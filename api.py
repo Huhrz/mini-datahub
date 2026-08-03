@@ -561,6 +561,20 @@ def benchmarks_for(dataset_id: str):
             "benchmarks": bm.match(row.get("embodiment", ""), concepts, dataset_id, row.get("source", ""))}
 
 
+@app.get("/api/report")
+def field_report():
+    """机器人数据领域现状报告：从目录自动统计 + 规则推导洞察。"""
+    import report as rp
+    with _lock:
+        df = store.run_df(_con, "SELECT * FROM datasets")
+    rows = [_parse_row(r) for r in df.to_dict(orient="records")]
+    try:
+        cov = gaps()
+    except Exception:
+        cov = None
+    return rp.build(rows, cov)
+
+
 # ==================== 学生引导（术语释义 + 学习路径）====================
 @app.get("/api/glossary")
 def glossary_all():

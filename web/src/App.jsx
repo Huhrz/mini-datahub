@@ -3,11 +3,12 @@ import { api, setToken, getToken } from "./api.js";
 import CoverageHeatmap from "./CoverageHeatmap.jsx";
 import EpisodePlayer, { Thumbnail, SampleStrip, OfficialViz, ThumbStrip } from "./EpisodePlayer.jsx";
 import { GlossaryProvider, Term, LearnView } from "./Learn.jsx";
+import ReportView from "./Report.jsx";
 import {
   Search, SlidersHorizontal, ExternalLink, AlertTriangle,
   Sun, Moon, Check, Film, LayoutGrid, List, ChevronLeft, ChevronRight,
   ShoppingCart, Download, X, Loader2, WifiOff, Braces, User, LogOut, FolderHeart, Save, Trash2,
-  GraduationCap,
+  GraduationCap, BarChart3,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
@@ -515,7 +516,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [allDs, setAllDs] = useState([]);
-  const [tab, setTab] = useState("list");
+  const [tab, setTab] = useState(() => localStorage.getItem("mdh-tab") || "report");
   const [selected, setSelected] = useState(null);
   const [cart, setCart] = useState(() => new Set());
   const [view, setView] = useState(() => localStorage.getItem("mdh-view") || "gallery");
@@ -580,6 +581,7 @@ export default function App() {
     localStorage.setItem("mdh-theme", dark ? "dark" : "light");
   }, [dark]);
   useEffect(() => { localStorage.setItem("mdh-view", view); }, [view]);
+  useEffect(() => { localStorage.setItem("mdh-tab", tab); }, [tab]);
 
   const set = (k, v) => { setFilters((f) => ({ ...f, [k]: v })); setPage(1); };
   const toggleConcept = (id) => { setFilters((f) => ({ ...f, concepts: f.concepts.includes(id) ? f.concepts.filter((x) => x !== id) : [...f.concepts, id] })); setPage(1); };
@@ -594,7 +596,8 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const tabs = [["list", "数据集", LayoutGrid], ["coverage", "覆盖度地图", SlidersHorizontal],
+  const tabs = [["report", "领域报告", BarChart3], ["list", "数据集", LayoutGrid],
+                ["coverage", "覆盖度地图", SlidersHorizontal],
                 ["compare", "对比回放", Film], ["learn", "入门学习", GraduationCap]];
 
   return (
@@ -631,7 +634,7 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
-        {stats && (
+        {stats && tab !== "report" && (
           <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
             <StatCard label="数据集数量" value={stats.n_datasets} />
             <StatCard label="轨迹总数" value={stats.n_episodes.toLocaleString()} />
@@ -650,7 +653,8 @@ export default function App() {
           ))}
         </div>
 
-        {tab === "coverage" ? <div className="space-y-4"><CoverageHeatmap /><GapReport /></div>
+        {tab === "report" ? <ReportView onOpenDataset={setSelected} />
+        : tab === "coverage" ? <div className="space-y-4"><CoverageHeatmap /><GapReport /></div>
         : tab === "learn" ? <LearnView onOpenDataset={setSelected} />
         : tab === "compare" ? <CompareView allDs={allDs} />
         : (
